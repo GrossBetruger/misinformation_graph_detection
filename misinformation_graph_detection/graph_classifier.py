@@ -91,3 +91,11 @@ if __name__ == "__main__":
     # test model
     y_pred = model.predict(X_test)
     print(sklearn.metrics.classification_report(y_test, y_pred))
+
+    # save performance metrics into performance_logs dir 
+    performance_logs_dir = Path("performance_logs")
+    performance_logs_dir.mkdir(exist_ok=True)
+    model_name = "random_forest"
+    model_version = "v1"
+    with open(performance_logs_dir / f"{model_name}_{model_version}.txt", "w") as f:
+        f.write(sklearn.metrics.classification_report(y_test, y_pred))
