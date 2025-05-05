@@ -74,22 +74,26 @@ def train_model(
     Train a model to classify graphs as conspiracy or non-conspiracy.
     """
     model = sklearn.ensemble.RandomForestClassifier()
-    model.fit(X, y)
+    model.fit(X_train, y_train)
     return model
 
 
 if __name__ == "__main__":
-
     X, y = create_dataset(PATH)
-    print(X.iloc[0], y.iloc[0])
+    print("Example X, y:", X.iloc[0], y.iloc[0])
+    print("X shape:", X.shape)
+    print("y shape:", y.shape)
+    print()
+
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
-        X, y, test_size=0.1
+        X, y, test_size=0.05
     )
 
     model = train_model(X_train, y_train)
 
     # test model
     y_pred = model.predict(X_test)
+    print("Model performance:")
     print(sklearn.metrics.classification_report(y_test, y_pred))
 
     # save performance metrics into performance_logs dir 
