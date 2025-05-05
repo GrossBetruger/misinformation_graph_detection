@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "misinformation-graph-detection"
+version = "0.1.0"
+description = ""
+authors = ["GrossBetruger <koriatoren@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+kagglehub = "^0.3.12"
+networkx = "^3.4.2"
+pandas = "^2.2.3"
+pyvis = "^0.3.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
