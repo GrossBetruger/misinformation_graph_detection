@@ -1,11 +1,12 @@
 import random
 import kagglehub
 import networkx as nx
+import numpy as np
 import pandas as pd
 import os
 
 from pathlib import Path
-from typing import Dict, Iterable, Hashable, Tuple, List
+from typing import Any, Dict, Iterable, Hashable, Tuple, List
 from dataclasses import dataclass
 from pyvis.network import Network
 
@@ -94,6 +95,35 @@ def plot_social_graph(G: nx.Graph, title: str = "Social Graph") -> None:
     os.system(f"open {filename}")
 
 
+def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
+    """
+    Analyze the community structure of a graph.
+    """
+    communities: List[List[Hashable]] = nx.algorithms.community.louvain_communities(
+        G, seed=0
+    )
+    comm_map: Dict[Hashable, int] = {}
+    for idx, community in enumerate(communities):
+        for node in community:
+            comm_map[node] = idx
+
+    num_communities = len(communities)
+    num_nodes = len(G.nodes())
+    num_edges = len(G.edges())
+    community_degrees = {
+        c: sum(G.degree(n) for n in community)
+        for c, community in enumerate(communities)
+    }
+
+    graph_features = {
+        "num_communities": num_communities,
+        "num_nodes": num_nodes,
+        "num_edges": num_edges,
+        "community_avg_degree": np.mean(list(community_degrees.values())),
+    }
+    return graph_features
+
+
 def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
     """
     Load all graphs from a directory of subfolders, each containing 'edges.txt' and 'nodes.csv'.
@@ -158,3 +188,7 @@ if __name__ == "__main__":
     plot_social_graph(con_graph, "Conspiracy Graph")
     plot_social_graph(fiveg_con_graph, "5G Conspiracy Graph")
     plot_social_graph(non_con_graph, "Non-Conspiracy Graph")
+
+    print("Conspiracy Graph: ", analyze_community_structure(con_graph))
+    print("5G Conspiracy Graph: ", analyze_community_structure(fiveg_con_graph))
+    print("Non-Conspiracy Graph: ", analyze_community_structure(non_con_graph))
