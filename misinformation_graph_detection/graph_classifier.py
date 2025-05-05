@@ -96,7 +96,11 @@ if __name__ == "__main__":
     # test model
     y_pred = model.predict(X_test)
     print("Model performance:")
-    print(sklearn.metrics.classification_report(y_test, y_pred))
+    # replace labels with class names
+    performance_str = sklearn.metrics.classification_report(
+        y_test, y_pred, target_names=["conspiracy", "5g conspiracy", "non-conspiracy"]
+    )
+    print(performance_str)
 
     # save performance metrics into performance_logs dir
     performance_logs_dir = Path("performance_logs")
