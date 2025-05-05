@@ -11,6 +11,7 @@ kagglehub = "^0.3.12"
 networkx = "^3.4.2"
 pandas = "^2.2.3"
 pyvis = "^0.3.2"
+black = "^25.1.0"
 
 
 [build-system]

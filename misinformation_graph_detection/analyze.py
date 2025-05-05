@@ -13,10 +13,11 @@ from pyvis.network import Network
 @dataclass(frozen=True)
 class PersonNode:
     """A lightweight container for a user in the social-graph."""
-    id: str          # unique, hashable key
-    time: int   # when the account was created (or any timestamp you track)
-    friends: int     # “following” count
-    followers: int   # follower count
+
+    id: str  # unique, hashable key
+    time: int  # when the account was created (or any timestamp you track)
+    friends: int  # “following” count
+    followers: int  # follower count
 
 
 def build_social_graph(
@@ -49,7 +50,8 @@ def build_social_graph(
 
     G.add_edges_from(edges)
     return G
- 
+
+
 def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
     """
     Load all graphs from a directory of subfolders, each containing 'edges.txt' and 'nodes.csv'.
@@ -81,6 +83,7 @@ def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
 
         graphs.append(build_social_graph(nodes, edges))
     return graphs
+
 
 # Download latest version
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
