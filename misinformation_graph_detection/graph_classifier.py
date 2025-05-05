@@ -3,7 +3,7 @@ from typing import Any
 
 import pandas as pd
 import sklearn
-from analyze import (
+from .analyze import (
     analyze_community_structure,
     build_social_graph,
     load_graphs_from_dir,
@@ -11,8 +11,8 @@ from analyze import (
 import kagglehub
 import networkx as nx
 
-path = kagglehub.dataset_download("arashnic/misinfo-graph")
-PATH = Path(path)
+"""Placeholder for dataset path; download only when run as script."""
+PATH: Path | None = None
 
 
 def load_graphs(graphs_dir: Path) -> list[nx.Graph]:
@@ -79,6 +79,9 @@ def train_model(
 
 
 if __name__ == "__main__":
+    # Download dataset from Kaggle
+    path = kagglehub.dataset_download("arashnic/misinfo-graph")
+    PATH = Path(path)
     X, y = create_dataset(PATH)
     print("Example X, y:", X.iloc[0], y.iloc[0])
     print("X shape:", X.shape)
@@ -96,7 +99,7 @@ if __name__ == "__main__":
     print("Model performance:")
     print(sklearn.metrics.classification_report(y_test, y_pred))
 
-    # save performance metrics into performance_logs dir 
+    # save performance metrics into performance_logs dir
     performance_logs_dir = Path("performance_logs")
     performance_logs_dir.mkdir(exist_ok=True)
     model_name = "random_forest"
