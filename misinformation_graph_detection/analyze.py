@@ -5,10 +5,9 @@ import pandas as pd
 import os
 
 from pathlib import Path
-from typing import Iterable, Hashable, Tuple, List
+from typing import Dict, Iterable, Hashable, Tuple, List
 from dataclasses import dataclass
 from pyvis.network import Network
-
 
 @dataclass(frozen=True)
 class PersonNode:
@@ -50,6 +49,50 @@ def build_social_graph(
 
     G.add_edges_from(edges)
     return G
+
+
+def plot_social_graph(G: nx.Graph, title: str = "Social Graph") -> None:
+    """
+    Interactive social graph visualization using pyvis:
+      • size    : proportional to #followers
+      • colour  : Louvain community assignment (grouping)
+    """
+    # 1) Community detection for grouping
+    communities = nx.algorithms.community.louvain_communities(G, seed=0)
+    comm_map: Dict[Hashable, int] = {}
+    for idx, community in enumerate(communities):
+        for node in community:
+            comm_map[node] = idx
+
+    # 2) Initialize pyvis Network
+    net = Network(height="750px", width="100%", bgcolor="#222", font_color="white")
+
+    # 3) Add nodes with properties
+    for node, data in G.nodes(data=True):
+        followers = data.get("followers", 0)
+        friends = data.get("friends", 0)
+        time = data.get("time", 0)
+        group = comm_map.get(node, 0)
+        title_html = (
+            f"ID: {node}<br>Followers: {followers}<br>Friends: {friends}<br>Time: {time}"
+        )
+        net.add_node(
+            str(node),
+            label=str(node),
+            title=title_html,
+            value=followers,
+            group=group,
+        )
+
+    # 4) Add edges
+    for src, dst in G.edges():
+        net.add_edge(str(src), str(dst))
+
+    # 5) Save to HTML and open
+    filename = f"{title.replace(' ', '_').lower()}.html"
+    # Write HTML file without notebook template
+    net.write_html(filename, open_browser=False, notebook=False)
+    os.system(f"open {filename}")
 
 
 def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
@@ -105,7 +148,7 @@ if __name__ == "__main__":
     net = Network(height="750px", bgcolor="#222", font_color="white")
     net.from_nx(con_graph)
     net.show("conspiracy_graph.html", notebook=False)
-    os.system("open graph.html")
+    os.system("open conspiracy_graph.html")
 
     random_index = random.randint(0, len(non_conspiracy_graphs) - 1)
     non_con_graph = non_conspiracy_graphs[random_index]
@@ -113,3 +156,6 @@ if __name__ == "__main__":
     net.from_nx(non_con_graph)
     net.show("non_conspiracy_graph.html", notebook=False)
     os.system("open non_conspiracy_graph.html")
+
+    plot_social_graph(con_graph, "Conspiracy Graph")
+    plot_social_graph(non_con_graph, "Non-Conspiracy Graph")
