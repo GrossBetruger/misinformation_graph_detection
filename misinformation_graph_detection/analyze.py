@@ -85,29 +85,31 @@ def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
     return graphs
 
 
-# Download latest version
-path = kagglehub.dataset_download("arashnic/misinfo-graph")
+if __name__ == "__main__":
 
-f: Path
-for f in Path(path).iterdir():
-    if f.is_dir() and str(f).endswith("Other_Graphs"):
-        conspiracy_graphs_dir = f
-    if f.is_dir() and str(f).endswith("Non_Conspiracy_Graphs"):
-        non_conspiracy_graphs_dir = f
+    # Download latest version
+    path = kagglehub.dataset_download("arashnic/misinfo-graph")
 
-conspiracy_graphs = load_graphs_from_dir(conspiracy_graphs_dir)
-non_conspiracy_graphs = load_graphs_from_dir(non_conspiracy_graphs_dir)
+    f: Path
+    for f in Path(path).iterdir():
+        if f.is_dir() and str(f).endswith("Other_Graphs"):
+            conspiracy_graphs_dir = f
+        if f.is_dir() and str(f).endswith("Non_Conspiracy_Graphs"):
+            non_conspiracy_graphs_dir = f
 
-random_index = random.randint(0, len(conspiracy_graphs) - 1)
-con_graph = conspiracy_graphs[random_index]
-net = Network(height="750px", bgcolor="#222", font_color="white")
-net.from_nx(con_graph)
-net.show("conspiracy_graph.html", notebook=False)
-os.system("open graph.html")
+    conspiracy_graphs = load_graphs_from_dir(conspiracy_graphs_dir)
+    non_conspiracy_graphs = load_graphs_from_dir(non_conspiracy_graphs_dir)
 
-random_index = random.randint(0, len(non_conspiracy_graphs) - 1)
-non_con_graph = non_conspiracy_graphs[random_index]
-net = Network(height="750px", bgcolor="#222", font_color="white")
-net.from_nx(non_con_graph)
-net.show("non_conspiracy_graph.html", notebook=False)
-os.system("open non_conspiracy_graph.html")
+    random_index = random.randint(0, len(conspiracy_graphs) - 1)
+    con_graph = conspiracy_graphs[random_index]
+    net = Network(height="750px", bgcolor="#222", font_color="white")
+    net.from_nx(con_graph)
+    net.show("conspiracy_graph.html", notebook=False)
+    os.system("open graph.html")
+
+    random_index = random.randint(0, len(non_conspiracy_graphs) - 1)
+    non_con_graph = non_conspiracy_graphs[random_index]
+    net = Network(height="750px", bgcolor="#222", font_color="white")
+    net.from_nx(non_con_graph)
+    net.show("non_conspiracy_graph.html", notebook=False)
+    os.system("open non_conspiracy_graph.html")
