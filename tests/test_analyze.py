@@ -37,24 +37,28 @@ def test_load_graphs_from_dir(tmp_path):
     ga = tmp_path / "graphA"
     ga.mkdir()
     (ga / "edges.txt").write_text("1 2\n2 3\n")
-    df_a = pd.DataFrame({
-        "id": [1, 2, 3],
-        "time": [0, 1, 2],
-        "friends": [10, 20, 30],
-        "followers": [5, 6, 7],
-    })
+    df_a = pd.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "time": [0, 1, 2],
+            "friends": [10, 20, 30],
+            "followers": [5, 6, 7],
+        }
+    )
     df_a.to_csv(ga / "nodes.csv", index=False)
 
     # Graph B: nodes 4-5
     gb = tmp_path / "graphB"
     gb.mkdir()
     (gb / "edges.txt").write_text("4 5\n")
-    df_b = pd.DataFrame({
-        "id": [4, 5],
-        "time": [3, 4],
-        "friends": [40, 50],
-        "followers": [8, 9],
-    })
+    df_b = pd.DataFrame(
+        {
+            "id": [4, 5],
+            "time": [3, 4],
+            "friends": [40, 50],
+            "followers": [8, 9],
+        }
+    )
     df_b.to_csv(gb / "nodes.csv", index=False)
 
     graphs = load_graphs_from_dir(tmp_path)
