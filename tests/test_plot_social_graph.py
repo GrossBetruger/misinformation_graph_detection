@@ -29,8 +29,8 @@ def test_plot_social_graph_creates_html(tmp_path, monkeypatch):
     # Capture os.system calls to avoid opening a browser
     calls = []
     monkeypatch.setattr(
-        'misinformation_graph_detection.analyze.os.system',
-        lambda cmd: calls.append(cmd)
+        "misinformation_graph_detection.analyze.os.system",
+        lambda cmd: calls.append(cmd),
     )
 
     # Generate the graph and plot it
@@ -44,10 +44,12 @@ def test_plot_social_graph_creates_html(tmp_path, monkeypatch):
     assert filename.exists(), f"Missing output HTML file: {filename}"
 
     # Check that os.system was called with the open command
-    assert calls == [f"open {filename.name}"], "Expected os.system to open the HTML file"
+    assert calls == [
+        f"open {filename.name}"
+    ], "Expected os.system to open the HTML file"
 
     # Read content and perform basic sanity checks
-    content = filename.read_text(encoding='utf-8')
+    content = filename.read_text(encoding="utf-8")
     # Should contain the vis DataSet initialization for nodes and edges
     assert "new vis.DataSet" in content, "HTML missing vis DataSet"
     # Node labels and values should appear in JSON
@@ -65,8 +67,8 @@ def test_plot_social_graph_empty_graph(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     calls = []
     monkeypatch.setattr(
-        'misinformation_graph_detection.analyze.os.system',
-        lambda cmd: calls.append(cmd)
+        "misinformation_graph_detection.analyze.os.system",
+        lambda cmd: calls.append(cmd),
     )
     # Empty graph
     G = nx.Graph()
@@ -75,7 +77,7 @@ def test_plot_social_graph_empty_graph(tmp_path, monkeypatch):
     plot_social_graph(G, title)
     filename = tmp_path / "empty_graph.html"
     assert filename.exists(), "Empty graph HTML file not created"
-    content = filename.read_text(encoding='utf-8')
+    content = filename.read_text(encoding="utf-8")
     # Even empty graph should include DataSet initializations
     assert "new vis.DataSet" in content
     # No nodes or edges data beyond the default

@@ -9,6 +9,7 @@ from typing import Dict, Iterable, Hashable, Tuple, List
 from dataclasses import dataclass
 from pyvis.network import Network
 
+
 @dataclass(frozen=True)
 class PersonNode:
     """A lightweight container for a user in the social-graph."""
@@ -73,9 +74,7 @@ def plot_social_graph(G: nx.Graph, title: str = "Social Graph") -> None:
         friends = data.get("friends", 0)
         time = data.get("time", 0)
         group = comm_map.get(node, 0)
-        title_html = (
-            f"ID: {node}<br>Followers: {followers}<br>Friends: {friends}<br>Time: {time}"
-        )
+        title_html = f"ID: {node}<br>Followers: {followers}<br>Friends: {friends}<br>Time: {time}"
         net.add_node(
             str(node),
             label=str(node),
@@ -132,6 +131,7 @@ if __name__ == "__main__":
 
     # Download latest version
     path = kagglehub.dataset_download("arashnic/misinfo-graph")
+    print(path)
 
     f: Path
     for f in Path(path).iterdir():
@@ -139,23 +139,22 @@ if __name__ == "__main__":
             conspiracy_graphs_dir = f
         if f.is_dir() and str(f).endswith("Non_Conspiracy_Graphs"):
             non_conspiracy_graphs_dir = f
+        if f.is_dir() and str(f).endswith("5G_Conspiracy_Graphs"):
+            fiveg_conspiracy_graphs_dir = f
 
+    fiveg_conspiracy_graphs = load_graphs_from_dir(fiveg_conspiracy_graphs_dir)
     conspiracy_graphs = load_graphs_from_dir(conspiracy_graphs_dir)
     non_conspiracy_graphs = load_graphs_from_dir(non_conspiracy_graphs_dir)
 
     random_index = random.randint(0, len(conspiracy_graphs) - 1)
     con_graph = conspiracy_graphs[random_index]
-    net = Network(height="750px", bgcolor="#222", font_color="white")
-    net.from_nx(con_graph)
-    net.show("conspiracy_graph.html", notebook=False)
-    os.system("open conspiracy_graph.html")
+
+    random_index = random.randint(0, len(fiveg_conspiracy_graphs) - 1)
+    fiveg_con_graph = fiveg_conspiracy_graphs[random_index]
 
     random_index = random.randint(0, len(non_conspiracy_graphs) - 1)
     non_con_graph = non_conspiracy_graphs[random_index]
-    net = Network(height="750px", bgcolor="#222", font_color="white")
-    net.from_nx(non_con_graph)
-    net.show("non_conspiracy_graph.html", notebook=False)
-    os.system("open non_conspiracy_graph.html")
 
     plot_social_graph(con_graph, "Conspiracy Graph")
+    plot_social_graph(fiveg_con_graph, "5G Conspiracy Graph")
     plot_social_graph(non_con_graph, "Non-Conspiracy Graph")
