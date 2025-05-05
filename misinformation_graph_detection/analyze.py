@@ -1,10 +1,11 @@
+import random
 import kagglehub
 import networkx as nx
 import pandas as pd
 import os
 
 from pathlib import Path
-from typing import Iterable, Hashable, Tuple
+from typing import Iterable, Hashable, Tuple, List
 from dataclasses import dataclass
 from pyvis.network import Network
 
@@ -48,11 +49,41 @@ def build_social_graph(
 
     G.add_edges_from(edges)
     return G
+ 
+def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
+    """
+    Load all graphs from a directory of subfolders, each containing 'edges.txt' and 'nodes.csv'.
+    Returns a list of populated NetworkX graphs.
+    """
+    graphs: List[nx.Graph] = []
+    for graph_dir in graphs_dir.iterdir():
+        edges_file = graph_dir / "edges.txt"
+        nodes_file = graph_dir / "nodes.csv"
+        assert edges_file.exists(), f"no edges: {graph_dir}"
+        assert nodes_file.exists(), f"no nodes: {graph_dir}"
+
+        edges: List[Tuple[int, int]] = []
+        with edges_file.open("r") as ef:
+            for line in ef:
+                u, v = line.strip().split()
+                edges.append((int(u), int(v)))
+
+        df = pd.read_csv(nodes_file)
+        nodes: List[PersonNode] = [
+            PersonNode(
+                id=int(row["id"]),
+                time=int(row["time"]),
+                friends=int(row["friends"]),
+                followers=int(row["followers"]),
+            )
+            for _, row in df.iterrows()
+        ]
+
+        graphs.append(build_social_graph(nodes, edges))
+    return graphs
 
 # Download latest version
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
-
-# print("Path to dataset files:", path)
 
 f: Path
 for f in Path(path).iterdir():
@@ -61,27 +92,19 @@ for f in Path(path).iterdir():
     if f.is_dir() and str(f).endswith("Non_Conspiracy_Graphs"):
         non_conspiracy_graphs_dir = f
 
-conspiracy_graphs = []
-for graph_dir in conspiracy_graphs_dir.iterdir():
-    edges_file = graph_dir / "edges.txt"
-    nodes_file = graph_dir / "nodes.csv"
-    assert edges_file.exists(), f"no edges: {graph_dir}"
-    assert nodes_file.exists(), f"no nodes: {graph_dir}"
-    edges = []
-    with open(edges_file, "r") as f:
-        for line in f:
-            raw_edge = line.strip().split(" ")
-            edge = (int(raw_edge[0]), int(raw_edge[1]))
-            edges.append(edge)
+conspiracy_graphs = load_graphs_from_dir(conspiracy_graphs_dir)
+non_conspiracy_graphs = load_graphs_from_dir(non_conspiracy_graphs_dir)
 
-    nodes = pd.read_csv(nodes_file)
-    nodes = [PersonNode(id=int(row["id"]), time=int(row["time"]), friends=int(row["friends"]), followers=int(row["followers"])) for _index, row in nodes.iterrows()]
-    conspiracy_graph = build_social_graph(nodes, edges)
-    conspiracy_graphs.append(conspiracy_graph)
-
-con_graph = conspiracy_graphs[0]
-print(con_graph.nodes(data=True))
+random_index = random.randint(0, len(conspiracy_graphs) - 1)
+con_graph = conspiracy_graphs[random_index]
 net = Network(height="750px", bgcolor="#222", font_color="white")
 net.from_nx(con_graph)
-net.show("graph.html", notebook=False)
+net.show("conspiracy_graph.html", notebook=False)
 os.system("open graph.html")
+
+random_index = random.randint(0, len(non_conspiracy_graphs) - 1)
+non_con_graph = non_conspiracy_graphs[random_index]
+net = Network(height="750px", bgcolor="#222", font_color="white")
+net.from_nx(non_con_graph)
+net.show("non_conspiracy_graph.html", notebook=False)
+os.system("open non_conspiracy_graph.html")
