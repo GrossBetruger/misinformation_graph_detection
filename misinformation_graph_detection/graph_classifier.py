@@ -3,9 +3,8 @@ from typing import Any
 
 import pandas as pd
 import sklearn
-from .analyze import (
+from misinformation_graph_detection.analyze import (
     analyze_community_structure,
-    build_social_graph,
     load_graphs_from_dir,
 )
 import kagglehub
