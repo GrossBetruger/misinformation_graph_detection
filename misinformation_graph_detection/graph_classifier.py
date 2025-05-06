@@ -72,7 +72,11 @@ def train_model(
     """
     Train a model to classify graphs as conspiracy or non-conspiracy.
     """
-    model = sklearn.ensemble.RandomForestClassifier()
+    model = sklearn.ensemble.RandomForestClassifier(
+        n_estimators=250,
+        max_depth=10,
+        random_state=42,
+    )
     model.fit(X_train, y_train)
     return model
 
@@ -82,19 +86,34 @@ if __name__ == "__main__":
     path = kagglehub.dataset_download("arashnic/misinfo-graph")
     PATH = Path(path)
     X, y = create_dataset(PATH)
-    print("Example X, y:", X.iloc[0], y.iloc[0])
-    print("X shape:", X.shape)
-    print("y shape:", y.shape)
-    print()
+    # undersample by min class 
+    print("min class:", y.value_counts(), y.value_counts().idxmin())
+    min_class_idx = y.value_counts().idxmin()
+    num_samples_min_class = y.value_counts()[min_class_idx]
+    print("num samples min class:", num_samples_min_class)
+
+    balanced_X = []
+    balanced_y = []
+    for index, row in X.iterrows():
+        if balanced_y.count(y.iloc[index]) < num_samples_min_class:
+            balanced_X.append(X.iloc[index])
+            balanced_y.append(y.iloc[index])
+    
+    print(len(balanced_X))
+    print(len(balanced_y))
+
+    X = pd.DataFrame(balanced_X)
+    y = pd.Series(balanced_y)
 
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
-        X, y, test_size=0.05
+        X, y, test_size=0.1
     )
 
     model = train_model(X_train, y_train)
 
     # test model
     y_pred = model.predict(X_test)
+    print()
     print("Model performance:")
     # replace labels with class names
     performance_str = sklearn.metrics.classification_report(
@@ -106,6 +125,6 @@ if __name__ == "__main__":
     performance_logs_dir = Path("performance_logs")
     performance_logs_dir.mkdir(exist_ok=True)
     model_name = "random_forest"
-    model_version = "v1"
+    model_version = "v1.1"
     with open(performance_logs_dir / f"{model_name}_{model_version}.txt", "w") as f:
         f.write(sklearn.metrics.classification_report(y_test, y_pred))

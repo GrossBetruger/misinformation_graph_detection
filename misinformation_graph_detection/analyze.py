@@ -99,6 +99,16 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     """
     Analyze the community structure of a graph.
     """
+
+    if G.number_of_edges() == 0:
+        return {
+            "num_communities": G.number_of_nodes(),
+            "num_nodes": G.number_of_nodes(),
+            "num_edges": G.number_of_edges(),
+            "community_avg_degree": 0,
+            "community_modularity": -1,
+        }
+
     communities: List[List[Hashable]] = nx.algorithms.community.louvain_communities(
         G, seed=0
     )
@@ -115,11 +125,26 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         for c, community in enumerate(communities)
     }
 
+    # Detect communities using greedy modularity maximization
+    greedy_communities = list(nx.algorithms.community.greedy_modularity_communities(G))
+
+    # Compute modularity score
+    mod_value = nx.algorithms.community.modularity(G, greedy_communities)
+
+    avg_num_friends = np.mean([G.nodes[n]["friends"] for n in G.nodes()])
+    avg_num_followers = np.mean([G.nodes[n]["followers"] for n in G.nodes()])
+    # for n in G.nodes():
+    #     features = G.nodes[n]
+    #     print(features)
+
     graph_features = {
         "num_communities": num_communities,
         "num_nodes": num_nodes,
         "num_edges": num_edges,
         "community_avg_degree": np.mean(list(community_degrees.values())),
+        "community_modularity": mod_value,
+        "avg_num_friends": avg_num_friends,
+        "avg_num_followers": avg_num_followers,
     }
     return graph_features
 
