@@ -1,8 +1,10 @@
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import sklearn
+import xgboost
 from misinformation_graph_detection.analyze import (
     analyze_community_structure,
     load_graphs_from_dir,
@@ -72,11 +74,15 @@ def train_model(
     """
     Train a model to classify graphs as conspiracy or non-conspiracy.
     """
+
     model = sklearn.ensemble.RandomForestClassifier(
-        n_estimators=250,
-        max_depth=10,
-        random_state=42,
+        n_estimators=100,
+        # max_depth=10,
+        # random_state=42,
     )
+
+    # model = xgboost.XGBClassifier()
+
     model.fit(X_train, y_train)
     return model
 
@@ -88,25 +94,34 @@ if __name__ == "__main__":
     X, y = create_dataset(PATH)
     # undersample by min class 
     print("min class:", y.value_counts(), y.value_counts().idxmin())
+    print("initial label distribution:", y.value_counts())
+    print()
     min_class_idx = y.value_counts().idxmin()
     num_samples_min_class = y.value_counts()[min_class_idx]
     print("num samples min class:", num_samples_min_class)
 
-    balanced_X = []
-    balanced_y = []
-    for index, row in X.iterrows():
-        if balanced_y.count(y.iloc[index]) < num_samples_min_class:
-            balanced_X.append(X.iloc[index])
-            balanced_y.append(y.iloc[index])
-    
-    print(len(balanced_X))
-    print(len(balanced_y))
+    Xy = X.copy()
+    Xy["y"] = y
+    dfs = []
+    for lbl in sorted(y.unique()):
+        idx = Xy[Xy["y"] == lbl]
+        dfs.append(idx.sample(n=num_samples_min_class, random_state=42))
+    Xy_bal = pd.concat(dfs).reset_index(drop=True)
+    assert len(Xy_bal) == num_samples_min_class * len(y.unique())
+                                        
+    # # merge labels 0 and 1 
+    # Xy_bal["y"] = Xy_bal["y"].apply(lambda x: 0 if x in [0, 1] else 1)
 
-    X = pd.DataFrame(balanced_X)
-    y = pd.Series(balanced_y)
+    # print("Balanced Dataset: ", Xy_bal.head())
+    # print()
+    # print("Labels: ", Xy_bal["y"].value_counts())
+    # y_bal = Xy_bal["y"]
+    # X_bal = Xy_bal.drop(columns=["y"])
 
+
+    y = y.apply(lambda x: 0 if x in [0, 1] else 1) # merge conspiracy and 5g conspiracy
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
-        X, y, test_size=0.1
+        X, y, test_size=0.2
     )
 
     model = train_model(X_train, y_train)
@@ -117,9 +132,20 @@ if __name__ == "__main__":
     print("Model performance:")
     # replace labels with class names
     performance_str = sklearn.metrics.classification_report(
-        y_test, y_pred, target_names=["conspiracy", "5g conspiracy", "non-conspiracy"]
+        y_test, y_pred, target_names=["conspiracy", "non-conspiracy"] #["conspiracy", "5g conspiracy", "non-conspiracy"]
     )
     print(performance_str)
+
+    # Feature importance
+    importances = model.feature_importances_
+    std = np.std([tree.feature_importances_ for tree in model.estimators_], axis=0)
+    indices = np.argsort(importances)[::-1]
+
+    # Print the feature ranking
+    print("Feature ranking:")   
+    for f in range(X.shape[1]):
+        print("%2d) %-*s %f" % (f + 1, 30, X.columns[indices[f]], importances[indices[f]]))
+    
 
     # save performance metrics into performance_logs dir
     performance_logs_dir = Path("performance_logs")

@@ -4,9 +4,10 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import os
+import plotly.express as px  # Fix: Import plotly.express
 
 from pathlib import Path
-from typing import Any, Dict, Iterable, Hashable, Tuple, List
+from typing import Any, Counter, Dict, Iterable, Hashable, Tuple, List
 from dataclasses import dataclass
 from pyvis.network import Network
 
@@ -120,10 +121,20 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     num_communities = len(communities)
     num_nodes = len(G.nodes())
     num_edges = len(G.edges())
+    graph_avg_degree = np.mean([G.degree(n) for n in G.nodes()])
+    graph_density = nx.density(G)
+    graph_avg_clustering = nx.average_clustering(G)
+
     community_degrees = {
         c: sum(G.degree(n) for n in community)
         for c, community in enumerate(communities)
     }
+    
+    # print("MAP", comm_map)
+    largest_community_id, largest_community_size = Counter(comm_map.values()).most_common(1)[0]
+    largest_community_nodes = [node for node in G.nodes() if comm_map[node] == largest_community_id]
+    # print("LARGEST COMMUNITY ID", largest_community_id)
+    # print("LARGEST COMMUNITY SIZE", largest_community_size)
 
     # Detect communities using greedy modularity maximization
     greedy_communities = list(nx.algorithms.community.greedy_modularity_communities(G))
@@ -133,6 +144,22 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
 
     avg_num_friends = np.mean([G.nodes[n]["friends"] for n in G.nodes()])
     avg_num_followers = np.mean([G.nodes[n]["followers"] for n in G.nodes()])
+    mean_time = np.mean([G.nodes[n]["time"] for n in G.nodes()])
+    max_time = np.max([G.nodes[n]["time"] for n in G.nodes()])
+    min_time = np.min([G.nodes[n]["time"] for n in G.nodes()])
+    std_time = np.std([G.nodes[n]["time"] for n in G.nodes()])
+
+    # largest community features
+    largest_community_avg_num_friends = np.mean([G.nodes[n]["friends"] for n in largest_community_nodes])
+    largest_community_avg_num_followers = np.mean([G.nodes[n]["followers"] for n in largest_community_nodes])
+    largest_community_mean_time = np.mean([G.nodes[n]["time"] for n in largest_community_nodes])
+    largest_community_max_time = np.max([G.nodes[n]["time"] for n in largest_community_nodes])
+    largest_community_min_time = np.min([G.nodes[n]["time"] for n in largest_community_nodes])
+    largest_community_std_time = np.std([G.nodes[n]["time"] for n in largest_community_nodes])
+    largest_community_avg_degree = np.mean([G.degree(n) for n in largest_community_nodes])
+    largest_community_density = nx.density(G.subgraph(largest_community_nodes))
+    largest_community_avg_clustering = nx.average_clustering(G.subgraph(largest_community_nodes))
+
     # for n in G.nodes():
     #     features = G.nodes[n]
     #     print(features)
@@ -141,10 +168,28 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "num_communities": num_communities,
         "num_nodes": num_nodes,
         "num_edges": num_edges,
+        "graph_avg_degree": graph_avg_degree,
+        "graph_density": graph_density,
+        "graph_avg_clustering": graph_avg_clustering,
         "community_avg_degree": np.mean(list(community_degrees.values())),
         "community_modularity": mod_value,
         "avg_num_friends": avg_num_friends,
         "avg_num_followers": avg_num_followers,
+        "mean_time": mean_time,
+        "max_time": max_time,
+        "min_time": min_time,
+        "std_time": std_time,
+        "largest_community_avg_num_friends": largest_community_avg_num_friends,
+        "largest_community_avg_num_followers": largest_community_avg_num_followers,
+        "largest_community_mean_time": largest_community_mean_time,
+        "largest_community_max_time": largest_community_max_time,
+        "largest_community_min_time": largest_community_min_time,
+        "largest_community_size": largest_community_size,
+        "largest_community_std_time": largest_community_std_time,
+        "largest_community_avg_degree": largest_community_avg_degree,
+        "largest_community_density": largest_community_density,
+        "largest_community_avg_clustering": largest_community_avg_clustering,
+
     }
     return graph_features
 
@@ -209,6 +254,18 @@ if __name__ == "__main__":
 
     random_index = random.randint(0, len(non_conspiracy_graphs) - 1)
     non_con_graph = non_conspiracy_graphs[random_index]
+
+    # for con_graph in conspiracy_graphs[:10]:
+    #     con_times = [node[1]["time"] for node in con_graph.nodes(data=True)]
+    #     px.histogram(con_times, nbins=100, title="Conspiracy Time Histogram").show()
+    
+    # for non_con_graph in non_conspiracy_graphs[:10]:
+    #     non_con_times = [node[1]["time"] for node in non_con_graph.nodes(data=True)]
+    #     px.histogram(non_con_times, nbins=100, title="Non-Conspiracy Time Histogram").show()
+    
+    # for fiveg_con_graph in fiveg_conspiracy_graphs[:10]:
+    #     fiveg_con_times = [node[1]["time"] for node in fiveg_con_graph.nodes(data=True)]
+    #     px.histogram(fiveg_con_times, nbins=100, title="5G Conspiracy Time Histogram").show()
 
     plot_social_graph(con_graph, "Conspiracy Graph")
     plot_social_graph(fiveg_con_graph, "5G Conspiracy Graph")
