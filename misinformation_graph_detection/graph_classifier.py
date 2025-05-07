@@ -77,7 +77,7 @@ def train_model(
 
     model = sklearn.ensemble.RandomForestClassifier(
         n_estimators=100,
-        # max_depth=10,
+        # max_depth=5, # low depth (5) gets better precision for conspiracy with much smaller recall
         # random_state=42,
     )
 
@@ -145,12 +145,11 @@ if __name__ == "__main__":
     print("Feature ranking:")   
     for f in range(X.shape[1]):
         print("%2d) %-*s %f" % (f + 1, 30, X.columns[indices[f]], importances[indices[f]]))
-    
 
     # save performance metrics into performance_logs dir
     performance_logs_dir = Path("performance_logs")
     performance_logs_dir.mkdir(exist_ok=True)
     model_name = "random_forest"
-    model_version = "v1.1"
+    model_version = "v1.2"
     with open(performance_logs_dir / f"{model_name}_{model_version}.txt", "w") as f:
         f.write(sklearn.metrics.classification_report(y_test, y_pred))
