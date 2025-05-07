@@ -88,7 +88,7 @@ Node sizes reflect follower counts; colors denote Louvain communities.
 ## Installation & Usage
 ```bash
 # Clone repository
-git clone https://github.com/<username>/misinformation-graph-detection.git
+git clone https://github.com/GrossBetruger/misinformation_graph_detection.git
 cd misinformation-graph-detection
 
 # Install dependencies (Poetry)
