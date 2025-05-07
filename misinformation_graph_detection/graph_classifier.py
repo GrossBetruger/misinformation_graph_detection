@@ -43,7 +43,8 @@ def create_dataset(
 
     print("Analyzing conspiracy graphs")
     conspiracy_features = [
-        analyze_community_structure(graph) for graph in tqdm(conspiracy_graphs, desc="Analyzing conspiracy graphs")
+        analyze_community_structure(graph)
+        for graph in tqdm(conspiracy_graphs, desc="Analyzing conspiracy graphs")
     ]
     conspiracy_vector = pd.DataFrame.from_records(conspiracy_features)
     print("Analyzing 5G conspiracy graphs")
@@ -95,7 +96,7 @@ if __name__ == "__main__":
     path = kagglehub.dataset_download("arashnic/misinfo-graph")
     PATH = Path(path)
     X, y = create_dataset(PATH)
-    # undersample by min class 
+    # undersample by min class
     print("min class:", y.value_counts(), y.value_counts().idxmin())
     print("initial label distribution:", y.value_counts())
     print()
@@ -111,8 +112,8 @@ if __name__ == "__main__":
     #     dfs.append(idx.sample(n=num_samples_min_class, random_state=42))
     # Xy_bal = pd.concat(dfs).reset_index(drop=True)
     # assert len(Xy_bal) == num_samples_min_class * len(y.unique())
-                                        
-    y = y.apply(lambda x: 0 if x in [0, 1] else 1) # merge conspiracy and 5g conspiracy
+
+    y = y.apply(lambda x: 0 if x in [0, 1] else 1)  # merge conspiracy and 5g conspiracy
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
         X, y, test_size=0.1
     )
@@ -125,7 +126,12 @@ if __name__ == "__main__":
     print("Model performance:")
     # replace labels with class names
     performance_str = sklearn.metrics.classification_report(
-        y_test, y_pred, target_names=["conspiracy", "non-conspiracy"] #["conspiracy", "5g conspiracy", "non-conspiracy"]
+        y_test,
+        y_pred,
+        target_names=[
+            "conspiracy",
+            "non-conspiracy",
+        ],  # ["conspiracy", "5g conspiracy", "non-conspiracy"]
     )
     print(performance_str)
 
@@ -135,23 +141,21 @@ if __name__ == "__main__":
     indices = np.argsort(importances)[::-1]
 
     # Print the feature ranking
-    print("Feature ranking:")   
+    print("Feature ranking:")
     for f in range(X.shape[1]):
-        print(
-            f"{f + 1:2d}) {X.columns[indices[f]]:<30} {importances[indices[f]]:f}"
-        )
+        print(f"{f + 1:2d}) {X.columns[indices[f]]:<30} {importances[indices[f]]:f}")
 
     scoring = "f1"
     perm_imp = permutation_importance(
-        model, X_test, y_test, n_repeats=5, random_state=0, scoring=scoring
+        model, X_test, y_test, n_repeats=15, random_state=0, scoring=scoring
     )
     importances = perm_imp.importances_mean
     threshold = np.percentile(importances, 30)  # drop bottom 20%
     feat_imp = pd.Series(importances, index=X_train.columns)
     feat_imp_sorted = feat_imp.sort_values(ascending=False)
 
-    # show all Series in print 
-    pd.set_option('display.max_rows', None)
+    # show all Series in print
+    pd.set_option("display.max_rows", None)
     print()
     print("permutation importances:\n", feat_imp_sorted)
     print()
@@ -165,10 +169,14 @@ if __name__ == "__main__":
     print()
     print(f"Model performance after feature selection (by {scoring} score):")
     performance_str = sklearn.metrics.classification_report(
-        y_test, y_pred_sel, target_names=["conspiracy", "non-conspiracy"] #["conspiracy", "5g conspiracy", "non-conspiracy"]
+        y_test,
+        y_pred_sel,
+        target_names=[
+            "conspiracy",
+            "non-conspiracy",
+        ],  # ["conspiracy", "5g conspiracy", "non-conspiracy"]
     )
     print(performance_str)
-
 
     # save performance metrics into performance_logs dir
     performance_logs_dir = Path("performance_logs")

@@ -161,22 +161,26 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     graph_density = nx.density(G)
     graph_avg_clustering = nx.average_clustering(G)
     edge_betweenness_centrality = nx.edge_betweenness_centrality(G)
-    avg_edge_betweenness_centrality = np.mean(list(edge_betweenness_centrality.values()))
+    avg_edge_betweenness_centrality = np.mean(
+        list(edge_betweenness_centrality.values())
+    )
 
     community_degrees = {
         c: sum(G.degree(n) for n in community)
         for c, community in enumerate(communities)
     }
-    
+
     # LCC max depth, median depth: Conspiracy cascades often grow deeper even when small
     comps = nx.connected_components(G)
     # largest one
     largest = max(comps, key=len)
     # induce the subgraph and compute
-    lcc = get_lcc(G) # G.subgraph(largest).copy() # Largest Connected Component
+    lcc = get_lcc(G)  # G.subgraph(largest).copy() # Largest Connected Component
     root = [node for node in G.nodes() if G.nodes[node]["time"] == 0][0]
     if root not in lcc:
-        largest = max([comp for comp in nx.connected_components(G) if root in comp], key=len)
+        largest = max(
+            [comp for comp in nx.connected_components(G) if root in comp], key=len
+        )
         lcc = G.subgraph(largest).copy()
     depths = [nx.shortest_path_length(lcc, source=root, target=v) for v in lcc]
     max_depth = max(depths)
@@ -191,19 +195,35 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     else:
         root_betweenness = 0
 
-    
-    largest_community_id, largest_community_size = Counter(comm_map.values()).most_common(1)[0]
-    largest_community_nodes = [node for node in G.nodes() if comm_map[node] == largest_community_id]
+    num_degree_0_nodes = sum(1 for n in G.nodes() if G.degree(n) == 0)
+    num_degree_1_nodes = sum(1 for n in G.nodes() if G.degree(n) == 1)
+    num_degree_2_nodes = sum(1 for n in G.nodes() if G.degree(n) == 2)
+    ratio_degree_0_nodes = num_degree_0_nodes / G.number_of_nodes()
+    ratio_degree_1_nodes = num_degree_1_nodes / G.number_of_nodes()
+    ratio_degree_2_nodes = num_degree_2_nodes / G.number_of_nodes()
+
+    largest_community_id, largest_community_size = Counter(
+        comm_map.values()
+    ).most_common(1)[0]
+    largest_community_nodes = [
+        node for node in G.nodes() if comm_map[node] == largest_community_id
+    ]
 
     # Detect communities using greedy modularity maximization
     greedy_communities = list(nx.algorithms.community.greedy_modularity_communities(G))
-    wiener_index = average_shortest_path_length_lcc(G) # Separates “star-shaped broadcast” from deep relay chains, a strong rumour signal (wiener_index)
+    wiener_index = average_shortest_path_length_lcc(
+        G
+    )  # Separates “star-shaped broadcast” from deep relay chains, a strong rumour signal (wiener_index)
 
     # Compute modularity score
     mod_value = nx.algorithms.community.modularity(G, greedy_communities)
 
-    avg_num_friends = np.log2(np.mean([G.nodes[n]["friends"] for n in G.nodes()])) # 4 → 2**4 = 16–31 real friends (dataset definition buckets of powers of 2)
-    avg_num_followers = np.log2(np.mean([G.nodes[n]["followers"] for n in G.nodes()]))  # 4 → 2**4 = 16–31 real followers (dataset definition buckets of powers of 2)
+    avg_num_friends = np.log2(
+        np.mean([G.nodes[n]["friends"] for n in G.nodes()])
+    )  # 4 → 2**4 = 16–31 real friends (dataset definition buckets of powers of 2)
+    avg_num_followers = np.log2(
+        np.mean([G.nodes[n]["followers"] for n in G.nodes()])
+    )  # 4 → 2**4 = 16–31 real followers (dataset definition buckets of powers of 2)
     mean_time = np.mean([G.nodes[n]["time"] for n in G.nodes()])
     assert mean_time > 0, f"Mean time is not greater than 0, {mean_time}"
     log_mean_time = np.log(mean_time)
@@ -221,78 +241,162 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     t50 = np.percentile(times, 50)
 
     # largest community features
-    largest_community_avg_num_friends = np.log2(np.mean([G.nodes[n]["friends"] for n in largest_community_nodes]))
-    largest_community_avg_num_followers = np.log2(np.mean([G.nodes[n]["followers"] for n in largest_community_nodes]))
-    largest_community_mean_time = np.mean([G.nodes[n]["time"] for n in largest_community_nodes])
-    largest_community_median_time = np.median([G.nodes[n]["time"] for n in largest_community_nodes])
-    largest_community_max_time = np.max([G.nodes[n]["time"] for n in largest_community_nodes])
-    largest_community_min_time = np.min([G.nodes[n]["time"] for n in largest_community_nodes])
-    largest_community_std_time = np.std([G.nodes[n]["time"] for n in largest_community_nodes])
-    largest_community_avg_degree = np.mean([G.degree(n) for n in largest_community_nodes])
+    largest_community_avg_num_friends = np.log2(
+        np.mean([G.nodes[n]["friends"] for n in largest_community_nodes])
+    )
+    largest_community_avg_num_followers = np.log2(
+        np.mean([G.nodes[n]["followers"] for n in largest_community_nodes])
+    )
+    largest_community_mean_time = np.mean(
+        [G.nodes[n]["time"] for n in largest_community_nodes]
+    )
+    largest_community_median_time = np.median(
+        [G.nodes[n]["time"] for n in largest_community_nodes]
+    )
+    largest_community_max_time = np.max(
+        [G.nodes[n]["time"] for n in largest_community_nodes]
+    )
+    largest_community_min_time = np.min(
+        [G.nodes[n]["time"] for n in largest_community_nodes]
+    )
+    largest_community_std_time = np.std(
+        [G.nodes[n]["time"] for n in largest_community_nodes]
+    )
+    largest_community_avg_degree = np.mean(
+        [G.degree(n) for n in largest_community_nodes]
+    )
     largest_community_density = nx.density(G.subgraph(largest_community_nodes))
-    largest_community_avg_clustering = nx.average_clustering(G.subgraph(largest_community_nodes))
-    largest_community_time_entropy = calc_time_entropy([G.nodes[n]["time"] for n in largest_community_nodes])
+    largest_community_avg_clustering = nx.average_clustering(
+        G.subgraph(largest_community_nodes)
+    )
+    largest_community_time_entropy = calc_time_entropy(
+        [G.nodes[n]["time"] for n in largest_community_nodes]
+    )
     largest_community_times = [G.nodes[n]["time"] for n in largest_community_nodes]
     largest_community_t5 = np.percentile(largest_community_times, 5)
     largest_community_t10 = np.percentile(largest_community_times, 10)
     largest_community_t20 = np.percentile(largest_community_times, 20)
     largest_community_t90 = np.percentile(largest_community_times, 90)
     largest_community_t50 = np.percentile(largest_community_times, 50)
-    largest_community_wiener_index = average_shortest_path_length_lcc(G.subgraph(largest_community_nodes))
+    largest_community_wiener_index = average_shortest_path_length_lcc(
+        G.subgraph(largest_community_nodes)
+    )
 
     # second largest community features
     if len(Counter(comm_map.values()).most_common(2)) > 1:
-        second_largest_community_id, second_largest_community_size = Counter(comm_map.values()).most_common(2)[1]
+        second_largest_community_id, second_largest_community_size = Counter(
+            comm_map.values()
+        ).most_common(2)[1]
     else:
-        second_largest_community_id, second_largest_community_size = largest_community_id, largest_community_size
-    second_largest_community_nodes = [node for node in G.nodes() if comm_map[node] == second_largest_community_id]
-    second_largest_community_avg_num_friends = np.mean([G.nodes[n]["friends"] for n in second_largest_community_nodes])
-    second_largest_community_avg_num_followers = np.mean([G.nodes[n]["followers"] for n in second_largest_community_nodes])
-    second_largest_community_mean_time = np.mean([G.nodes[n]["time"] for n in second_largest_community_nodes])
-    second_largest_community_median_time = np.median([G.nodes[n]["time"] for n in second_largest_community_nodes])
-    second_largest_community_max_time = np.max([G.nodes[n]["time"] for n in second_largest_community_nodes])
-    second_largest_community_min_time = np.min([G.nodes[n]["time"] for n in second_largest_community_nodes])
-    second_largest_community_std_time = np.std([G.nodes[n]["time"] for n in second_largest_community_nodes])
-    second_largest_community_avg_degree = np.mean([G.degree(n) for n in second_largest_community_nodes])
-    second_largest_community_density = nx.density(G.subgraph(second_largest_community_nodes))
-    second_largest_community_avg_clustering = nx.average_clustering(G.subgraph(second_largest_community_nodes))
-    second_largest_community_time_entropy = calc_time_entropy([G.nodes[n]["time"] for n in second_largest_community_nodes])
-    second_largest_community_times = [G.nodes[n]["time"] for n in second_largest_community_nodes]
+        second_largest_community_id, second_largest_community_size = (
+            largest_community_id,
+            largest_community_size,
+        )
+    second_largest_community_nodes = [
+        node for node in G.nodes() if comm_map[node] == second_largest_community_id
+    ]
+    second_largest_community_avg_num_friends = np.mean(
+        [G.nodes[n]["friends"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_avg_num_followers = np.mean(
+        [G.nodes[n]["followers"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_mean_time = np.mean(
+        [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_median_time = np.median(
+        [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_max_time = np.max(
+        [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_min_time = np.min(
+        [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_std_time = np.std(
+        [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_avg_degree = np.mean(
+        [G.degree(n) for n in second_largest_community_nodes]
+    )
+    second_largest_community_density = nx.density(
+        G.subgraph(second_largest_community_nodes)
+    )
+    second_largest_community_avg_clustering = nx.average_clustering(
+        G.subgraph(second_largest_community_nodes)
+    )
+    second_largest_community_time_entropy = calc_time_entropy(
+        [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    )
+    second_largest_community_times = [
+        G.nodes[n]["time"] for n in second_largest_community_nodes
+    ]
     second_largest_community_t5 = np.percentile(second_largest_community_times, 5)
     second_largest_community_t10 = np.percentile(second_largest_community_times, 10)
     second_largest_community_t20 = np.percentile(second_largest_community_times, 20)
     second_largest_community_t90 = np.percentile(second_largest_community_times, 90)
     second_largest_community_t50 = np.percentile(second_largest_community_times, 50)
-    second_largest_community_wiener_index = average_shortest_path_length_lcc(G.subgraph(second_largest_community_nodes))
-
+    second_largest_community_wiener_index = average_shortest_path_length_lcc(
+        G.subgraph(second_largest_community_nodes)
+    )
 
     # for n in G.nodes():
     #     features = G.nodes[n]
     #     print(features)
 
-    highest_betweenness_edge = max(edge_betweenness_centrality, key=edge_betweenness_centrality.get)
+    highest_betweenness_edge = max(
+        edge_betweenness_centrality, key=edge_betweenness_centrality.get
+    )
     highest_betweenness_node1, highest_betweenness_node2 = highest_betweenness_edge
-    highest_betweenness = edge_betweenness_centrality[highest_betweenness_node1, highest_betweenness_node2]
+    highest_betweenness = edge_betweenness_centrality[
+        highest_betweenness_node1, highest_betweenness_node2
+    ]
     # higest betweeness node features
     highest_betweenness_node1_time = G.nodes[highest_betweenness_node1]["time"]
     highest_betweenness_node1_friends = G.nodes[highest_betweenness_node1]["friends"]
-    highest_betweenness_node1_followers = G.nodes[highest_betweenness_node1]["followers"]
+    highest_betweenness_node1_followers = G.nodes[highest_betweenness_node1][
+        "followers"
+    ]
     highest_betweenness_node1_degree = G.degree(highest_betweenness_node1)
     # highest betweeness node 1 lcc features
-    largest_comp_node1 = max([comp for comp in nx.connected_components(G) if highest_betweenness_node1 in comp], key=len)
+    largest_comp_node1 = max(
+        [
+            comp
+            for comp in nx.connected_components(G)
+            if highest_betweenness_node1 in comp
+        ],
+        key=len,
+    )
     lcc_node1 = G.subgraph(largest_comp_node1).copy()
-    depths_node1 = [nx.shortest_path_length(lcc_node1, source=highest_betweenness_node1, target=v) for v in lcc_node1]
+    depths_node1 = [
+        nx.shortest_path_length(lcc_node1, source=highest_betweenness_node1, target=v)
+        for v in lcc_node1
+    ]
     max_depth_node1 = max(depths_node1)
     median_depth_node1 = np.median(depths_node1)
 
     highest_betweenness_node2_time = G.nodes[highest_betweenness_node2]["time"]
     highest_betweenness_node2_friends = G.nodes[highest_betweenness_node2]["friends"]
-    highest_betweenness_node2_followers = G.nodes[highest_betweenness_node2]["followers"]
+    highest_betweenness_node2_followers = G.nodes[highest_betweenness_node2][
+        "followers"
+    ]
     highest_betweenness_node2_degree = G.degree(highest_betweenness_node2)
-    follower_diff_node2_root = G.nodes[highest_betweenness_node2]["followers"] - G.nodes[root]["followers"]
-    largest_comp_node2 = max([comp for comp in nx.connected_components(G) if highest_betweenness_node2 in comp], key=len)
+    follower_diff_node2_root = (
+        G.nodes[highest_betweenness_node2]["followers"] - G.nodes[root]["followers"]
+    )
+    largest_comp_node2 = max(
+        [
+            comp
+            for comp in nx.connected_components(G)
+            if highest_betweenness_node2 in comp
+        ],
+        key=len,
+    )
     lcc_node2 = G.subgraph(largest_comp_node2).copy()
-    depths_node2 = [nx.shortest_path_length(lcc_node2, source=highest_betweenness_node2, target=v) for v in lcc_node2]
+    depths_node2 = [
+        nx.shortest_path_length(lcc_node2, source=highest_betweenness_node2, target=v)
+        for v in lcc_node2
+    ]
     max_depth_node2 = max(depths_node2)
     median_depth_node2 = np.median(depths_node2)
 
@@ -311,6 +415,12 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "community_modularity": mod_value,
         "avg_num_friends": avg_num_friends,
         "avg_num_followers": avg_num_followers,
+        "num_degree_0_nodes": num_degree_0_nodes,
+        "num_degree_1_nodes": num_degree_1_nodes,
+        "num_degree_2_nodes": num_degree_2_nodes,
+        "ratio_degree_0_nodes": ratio_degree_0_nodes,
+        "ratio_degree_1_nodes": ratio_degree_1_nodes,
+        "ratio_degree_2_nodes": ratio_degree_2_nodes,
         "mean_time": mean_time,
         "log_mean_time": log_mean_time,
         "sqrt_mean_time": sqrt_mean_time,
@@ -374,7 +484,7 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "highest_betweenness_node2_max_depth": max_depth_node2,
         "highest_betweenness_node2_median_depth": median_depth_node2,
         "follower_diff_node2_root": follower_diff_node2_root,
-        }
+    }
     # find infinite values
     for key, value in graph_features.items():
         if isinstance(value, float) and np.isinf(value):
@@ -389,7 +499,9 @@ def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
     """
     graphs: List[nx.Graph] = []
     print(f"Loading graphs from: {graphs_dir}")
-    for graph_dir in tqdm(graphs_dir.iterdir()):#, desc=f"Loading graphs from: {graphs_dir}"):
+    for graph_dir in tqdm(
+        graphs_dir.iterdir()
+    ):  # , desc=f"Loading graphs from: {graphs_dir}"):
         edges_file = graph_dir / "edges.txt"
         nodes_file = graph_dir / "nodes.csv"
         assert edges_file.exists(), f"no edges: {graph_dir}"
@@ -447,11 +559,11 @@ if __name__ == "__main__":
     # for con_graph in conspiracy_graphs[:10]:
     #     con_times = [node[1]["time"] for node in con_graph.nodes(data=True)]
     #     px.histogram(con_times, nbins=100, title="Conspiracy Time Histogram").show()
-    
+
     # for non_con_graph in non_conspiracy_graphs[:10]:
     #     non_con_times = [node[1]["time"] for node in non_con_graph.nodes(data=True)]
     #     px.histogram(non_con_times, nbins=100, title="Non-Conspiracy Time Histogram").show()
-    
+
     # for fiveg_con_graph in fiveg_conspiracy_graphs[:10]:
     #     fiveg_con_times = [node[1]["time"] for node in fiveg_con_graph.nodes(data=True)]
     #     px.histogram(fiveg_con_times, nbins=100, title="5G Conspiracy Time Histogram").show()

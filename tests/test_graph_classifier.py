@@ -33,21 +33,21 @@ def sample_graphs_dir(tmp_path):
         (base / cat).mkdir(parents=True)
     # Other_Graphs: simple two-node graph
     nodes_a = [
-        {"id": 1, "time": 0, "friends": 5, "followers": 2}, # root
+        {"id": 1, "time": 0, "friends": 5, "followers": 2},  # root
         {"id": 2, "time": 20, "friends": 3, "followers": 4},
     ]
     edges_a = [(1, 2)]
     write_graph(base, "Other_Graphs", "graphA", nodes_a, edges_a)
     # 5G_Conspiracy_Graphs: three-node chain
     nodes_b = [
-        {"id": 3, "time": 0, "friends": 7, "followers": 6}, # root
+        {"id": 3, "time": 0, "friends": 7, "followers": 6},  # root
         {"id": 4, "time": 40, "friends": 8, "followers": 5},
         {"id": 5, "time": 50, "friends": 9, "followers": 4},
     ]
     edges_b = [(3, 4), (4, 5)]
     write_graph(base, "5G_Conspiracy_Graphs", "graphB", nodes_b, edges_b)
     # Non_Conspiracy_Graphs: single node, no edges
-    nodes_c = [{"id": 6, "time": 0, "friends": 10, "followers": 8}] # root
+    nodes_c = [{"id": 6, "time": 0, "friends": 10, "followers": 8}]  # root
     edges_c = []
     write_graph(base, "Non_Conspiracy_Graphs", "graphC", nodes_c, edges_c)
     return base
@@ -88,7 +88,7 @@ def test_create_dataset(sample_graphs_dir):
     # DataFrame of features and Series of labels
     assert isinstance(features, pd.DataFrame)
     assert isinstance(labels, pd.Series)
-    
+
     expected_cols = {
         "num_communities",
         "num_nodes",
