@@ -9,6 +9,7 @@ from misinformation_graph_detection.analyze import (
     analyze_community_structure,
     load_graphs_from_dir,
 )
+from sklearn.inspection import permutation_importance
 import kagglehub
 import networkx as nx
 
@@ -144,7 +145,36 @@ if __name__ == "__main__":
     # Print the feature ranking
     print("Feature ranking:")   
     for f in range(X.shape[1]):
-        print("%2d) %-*s %f" % (f + 1, 30, X.columns[indices[f]], importances[indices[f]]))
+        print(
+            f"{f + 1:2d}) {X.columns[indices[f]]:<30} {importances[indices[f]]:f}"
+        )
+
+    scoring = "f1"
+    perm_imp = permutation_importance(
+        model, X_test, y_test, n_repeats=5, random_state=0, scoring=scoring
+    )
+    importances = perm_imp.importances_mean
+    threshold = np.percentile(importances, 20)  # drop bottom 20%
+    feat_imp = pd.Series(importances, index=X_train.columns)
+    feat_imp_sorted = feat_imp.sort_values(ascending=False)
+
+    print()
+    print("permutation importances:\n", feat_imp_sorted)
+    print()
+    print("threshold:", threshold)
+
+    selected = X_train.columns[importances > threshold]
+    X_train_sel, X_test_sel = X_train[selected], X_test[selected]
+
+    model_sel = train_model(X_train_sel, y_train)
+    y_pred_sel = model_sel.predict(X_test_sel)
+    print()
+    print(f"Model performance after feature selection (by {scoring} score):")
+    performance_str = sklearn.metrics.classification_report(
+        y_test, y_pred_sel, target_names=["conspiracy", "non-conspiracy"] #["conspiracy", "5g conspiracy", "non-conspiracy"]
+    )
+    print(performance_str)
+
 
     # save performance metrics into performance_logs dir
     performance_logs_dir = Path("performance_logs")

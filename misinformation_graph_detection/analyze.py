@@ -262,6 +262,7 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     highest_betweenness_node2_friends = G.nodes[highest_betweenness_node2]["friends"]
     highest_betweenness_node2_followers = G.nodes[highest_betweenness_node2]["followers"]
     highest_betweenness_node2_degree = G.degree(highest_betweenness_node2)
+    follower_diff_node2_root = G.nodes[highest_betweenness_node2]["followers"] - G.nodes[root]["followers"]
     largest_comp_node2 = max([comp for comp in nx.connected_components(G) if highest_betweenness_node2 in comp], key=len)
     lcc_node2 = G.subgraph(largest_comp_node2).copy()
     depths_node2 = [nx.shortest_path_length(lcc_node2, source=highest_betweenness_node2, target=v) for v in lcc_node2]
@@ -332,7 +333,8 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "highest_betweenness_node2_degree": highest_betweenness_node2_degree,
         "highest_betweenness_node2_max_depth": max_depth_node2,
         "highest_betweenness_node2_median_depth": median_depth_node2,
-    }
+        "follower_diff_node2_root": follower_diff_node2_root,
+        }
     return graph_features
 
 
