@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Counter, Dict, Iterable, Hashable, Tuple, List
 from dataclasses import dataclass
 from pyvis.network import Network
+from tqdm import tqdm
 
 
 @dataclass(frozen=True)
@@ -387,7 +388,8 @@ def load_graphs_from_dir(graphs_dir: Path) -> List[nx.Graph]:
     Returns a list of populated NetworkX graphs.
     """
     graphs: List[nx.Graph] = []
-    for graph_dir in graphs_dir.iterdir():
+    print(f"Loading graphs from: {graphs_dir}")
+    for graph_dir in tqdm(graphs_dir.iterdir()):#, desc=f"Loading graphs from: {graphs_dir}"):
         edges_file = graph_dir / "edges.txt"
         nodes_file = graph_dir / "nodes.csv"
         assert edges_file.exists(), f"no edges: {graph_dir}"

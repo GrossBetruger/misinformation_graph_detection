@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import sklearn
+from tqdm import tqdm
 import xgboost
 from misinformation_graph_detection.analyze import (
     analyze_community_structure,
@@ -40,18 +41,19 @@ def create_dataset(
         graphs_dir
     )
 
+    print("Analyzing conspiracy graphs")
     conspiracy_features = [
-        analyze_community_structure(graph) for graph in conspiracy_graphs
+        analyze_community_structure(graph) for graph in tqdm(conspiracy_graphs, desc="Analyzing conspiracy graphs")
     ]
     conspiracy_vector = pd.DataFrame.from_records(conspiracy_features)
-
+    print("Analyzing 5G conspiracy graphs")
     fiveg_conspiracy_features = [
-        analyze_community_structure(graph) for graph in fiveg_conspiracy_graphs
+        analyze_community_structure(graph) for graph in tqdm(fiveg_conspiracy_graphs)
     ]
     fiveg_conspiracy_vector = pd.DataFrame.from_records(fiveg_conspiracy_features)
-
+    print("Analyzing non-conspiracy graphs")
     non_conspiracy_features = [
-        analyze_community_structure(graph) for graph in non_conspiracy_graphs
+        analyze_community_structure(graph) for graph in tqdm(non_conspiracy_graphs)
     ]
     non_conspiracy_vector = pd.DataFrame.from_records(non_conspiracy_features)
 
@@ -101,14 +103,14 @@ if __name__ == "__main__":
     num_samples_min_class = y.value_counts()[min_class_idx]
     print("num samples min class:", num_samples_min_class)
 
-    Xy = X.copy()
-    Xy["y"] = y
-    dfs = []
-    for lbl in sorted(y.unique()):
-        idx = Xy[Xy["y"] == lbl]
-        dfs.append(idx.sample(n=num_samples_min_class, random_state=42))
-    Xy_bal = pd.concat(dfs).reset_index(drop=True)
-    assert len(Xy_bal) == num_samples_min_class * len(y.unique())
+    # Xy = X.copy()
+    # Xy["y"] = y
+    # dfs = []
+    # for lbl in sorted(y.unique()):
+    #     idx = Xy[Xy["y"] == lbl]
+    #     dfs.append(idx.sample(n=num_samples_min_class, random_state=42))
+    # Xy_bal = pd.concat(dfs).reset_index(drop=True)
+    # assert len(Xy_bal) == num_samples_min_class * len(y.unique())
                                         
     y = y.apply(lambda x: 0 if x in [0, 1] else 1) # merge conspiracy and 5g conspiracy
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
