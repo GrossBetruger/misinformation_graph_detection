@@ -124,17 +124,17 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     graph_avg_degree = np.mean([G.degree(n) for n in G.nodes()])
     graph_density = nx.density(G)
     graph_avg_clustering = nx.average_clustering(G)
+    edge_betweenness_centrality = nx.edge_betweenness_centrality(G)
+    avg_edge_betweenness_centrality = np.mean(list(edge_betweenness_centrality.values()))
 
     community_degrees = {
         c: sum(G.degree(n) for n in community)
         for c, community in enumerate(communities)
     }
-    
-    # print("MAP", comm_map)
+
     largest_community_id, largest_community_size = Counter(comm_map.values()).most_common(1)[0]
     largest_community_nodes = [node for node in G.nodes() if comm_map[node] == largest_community_id]
-    # print("LARGEST COMMUNITY ID", largest_community_id)
-    # print("LARGEST COMMUNITY SIZE", largest_community_size)
+
 
     # Detect communities using greedy modularity maximization
     greedy_communities = list(nx.algorithms.community.greedy_modularity_communities(G))
@@ -145,6 +145,7 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     avg_num_friends = np.mean([G.nodes[n]["friends"] for n in G.nodes()])
     avg_num_followers = np.mean([G.nodes[n]["followers"] for n in G.nodes()])
     mean_time = np.mean([G.nodes[n]["time"] for n in G.nodes()])
+    median_time = np.median([G.nodes[n]["time"] for n in G.nodes()])
     max_time = np.max([G.nodes[n]["time"] for n in G.nodes()])
     min_time = np.min([G.nodes[n]["time"] for n in G.nodes()])
     std_time = np.std([G.nodes[n]["time"] for n in G.nodes()])
@@ -153,6 +154,7 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     largest_community_avg_num_friends = np.mean([G.nodes[n]["friends"] for n in largest_community_nodes])
     largest_community_avg_num_followers = np.mean([G.nodes[n]["followers"] for n in largest_community_nodes])
     largest_community_mean_time = np.mean([G.nodes[n]["time"] for n in largest_community_nodes])
+    largest_community_median_time = np.median([G.nodes[n]["time"] for n in largest_community_nodes])
     largest_community_max_time = np.max([G.nodes[n]["time"] for n in largest_community_nodes])
     largest_community_min_time = np.min([G.nodes[n]["time"] for n in largest_community_nodes])
     largest_community_std_time = np.std([G.nodes[n]["time"] for n in largest_community_nodes])
@@ -164,6 +166,17 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     #     features = G.nodes[n]
     #     print(features)
 
+    highest_betweenness_edge = max(edge_betweenness_centrality, key=edge_betweenness_centrality.get)
+    highest_betweenness_node1, highest_betweenness_node2 = highest_betweenness_edge
+    # higest betweeness node features
+    highest_betweenness_node1_time = G.nodes[highest_betweenness_node1]["time"]
+    highest_betweenness_node1_friends = G.nodes[highest_betweenness_node1]["friends"]
+    highest_betweenness_node1_followers = G.nodes[highest_betweenness_node1]["followers"]
+    highest_betweenness_node2_time = G.nodes[highest_betweenness_node2]["time"]
+    highest_betweenness_node2_friends = G.nodes[highest_betweenness_node2]["friends"]
+    highest_betweenness_node2_followers = G.nodes[highest_betweenness_node2]["followers"]
+
+
     graph_features = {
         "num_communities": num_communities,
         "num_nodes": num_nodes,
@@ -171,11 +184,13 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "graph_avg_degree": graph_avg_degree,
         "graph_density": graph_density,
         "graph_avg_clustering": graph_avg_clustering,
+        "avg_edge_betweenness_centrality": avg_edge_betweenness_centrality,
         "community_avg_degree": np.mean(list(community_degrees.values())),
         "community_modularity": mod_value,
         "avg_num_friends": avg_num_friends,
         "avg_num_followers": avg_num_followers,
         "mean_time": mean_time,
+        "median_time": median_time,
         "max_time": max_time,
         "min_time": min_time,
         "std_time": std_time,
@@ -189,7 +204,13 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "largest_community_avg_degree": largest_community_avg_degree,
         "largest_community_density": largest_community_density,
         "largest_community_avg_clustering": largest_community_avg_clustering,
-
+        "largest_community_median_time": largest_community_median_time,
+        "highest_betweenness_node1_time": highest_betweenness_node1_time,
+        "highest_betweenness_node1_friends": highest_betweenness_node1_friends,
+        "highest_betweenness_node1_followers": highest_betweenness_node1_followers,
+        "highest_betweenness_node2_time": highest_betweenness_node2_time,
+        "highest_betweenness_node2_friends": highest_betweenness_node2_friends,
+        "highest_betweenness_node2_followers": highest_betweenness_node2_followers,
     }
     return graph_features
 
