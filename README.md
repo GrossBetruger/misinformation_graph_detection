@@ -93,19 +93,16 @@ cd misinformation-graph-detection
 
 # Install dependencies (Poetry)
 poetry install
-
-# (Optional) Install system-wide
-pip install -r requirements.txt
 ```
 
 ### Analyze & Visualize
 ```bash
-python -m misinformation_graph_detection.analyze
+poetry run python misinformation_graph_detection/analyze.py
 ```
 
 ### Train & Evaluate Classifier
 ```bash
-python -m misinformation_graph_detection.graph_classifier
+poetry run python misinformation_graph_detection/graph_classifier.py
 ```
 
 ## Testing
