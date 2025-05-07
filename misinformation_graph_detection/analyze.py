@@ -237,9 +237,14 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     t5 = np.percentile(times, 5)
     t10 = np.percentile(times, 10)
     t20 = np.percentile(times, 20)
-    t90 = np.percentile(times, 90)
+    t30 = np.percentile(times, 30)
+    t40 = np.percentile(times, 40)
     t50 = np.percentile(times, 50)
-
+    t60 = np.percentile(times, 60)
+    t70 = np.percentile(times, 70)
+    t80 = np.percentile(times, 80)
+    t90 = np.percentile(times, 90)
+    t95 = np.percentile(times, 95)
     # largest community features
     largest_community_avg_num_friends = np.log2(
         np.mean([G.nodes[n]["friends"] for n in largest_community_nodes])
@@ -276,8 +281,14 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     largest_community_t5 = np.percentile(largest_community_times, 5)
     largest_community_t10 = np.percentile(largest_community_times, 10)
     largest_community_t20 = np.percentile(largest_community_times, 20)
-    largest_community_t90 = np.percentile(largest_community_times, 90)
+    largest_community_t30 = np.percentile(largest_community_times, 30)
+    largest_community_t40 = np.percentile(largest_community_times, 40)
     largest_community_t50 = np.percentile(largest_community_times, 50)
+    largest_community_t60 = np.percentile(largest_community_times, 60)
+    largest_community_t70 = np.percentile(largest_community_times, 70)
+    largest_community_t80 = np.percentile(largest_community_times, 80)
+    largest_community_t90 = np.percentile(largest_community_times, 90)
+    largest_community_t95 = np.percentile(largest_community_times, 95)
     largest_community_wiener_index = average_shortest_path_length_lcc(
         G.subgraph(largest_community_nodes)
     )
@@ -334,15 +345,17 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     second_largest_community_t5 = np.percentile(second_largest_community_times, 5)
     second_largest_community_t10 = np.percentile(second_largest_community_times, 10)
     second_largest_community_t20 = np.percentile(second_largest_community_times, 20)
-    second_largest_community_t90 = np.percentile(second_largest_community_times, 90)
+    second_largest_community_t30 = np.percentile(second_largest_community_times, 30)
+    second_largest_community_t40 = np.percentile(second_largest_community_times, 40)
     second_largest_community_t50 = np.percentile(second_largest_community_times, 50)
+    second_largest_community_t60 = np.percentile(second_largest_community_times, 60)
+    second_largest_community_t70 = np.percentile(second_largest_community_times, 70)
+    second_largest_community_t80 = np.percentile(second_largest_community_times, 80)
+    second_largest_community_t90 = np.percentile(second_largest_community_times, 90)
+    second_largest_community_t95 = np.percentile(second_largest_community_times, 95)
     second_largest_community_wiener_index = average_shortest_path_length_lcc(
         G.subgraph(second_largest_community_nodes)
     )
-
-    # for n in G.nodes():
-    #     features = G.nodes[n]
-    #     print(features)
 
     highest_betweenness_edge = max(
         edge_betweenness_centrality, key=edge_betweenness_centrality.get
@@ -432,8 +445,14 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "t5": t5,
         "t10": t10,
         "t20": t20,
-        "t90": t90,
+        "t30": t30,
+        "t40": t40,
         "t50": t50,
+        "t60": t60,
+        "t70": t70,
+        "t80": t80,
+        "t90": t90,
+        "t95": t95,
         "root_time": root_time,
         "root_friends": root_friends,
         "root_followers": root_followers,
@@ -452,6 +471,17 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "largest_community_avg_clustering": largest_community_avg_clustering,
         "largest_community_median_time": largest_community_median_time,
         "largest_community_time_entropy": largest_community_time_entropy,
+        "largest_community_t5": largest_community_t5,
+        "largest_community_t10": largest_community_t10,
+        "largest_community_t20": largest_community_t20,
+        "largest_community_t30": largest_community_t30,
+        "largest_community_t40": largest_community_t40,
+        "largest_community_t50": largest_community_t50,
+        "largest_community_t60": largest_community_t60,
+        "largest_community_t70": largest_community_t70,
+        "largest_community_t80": largest_community_t80,
+        "largest_community_t90": largest_community_t90,
+        "largest_community_t95": largest_community_t95,
         "second_largest_community_size": second_largest_community_size,
         "second_largest_community_avg_num_friends": second_largest_community_avg_num_friends,
         "second_largest_community_avg_num_followers": second_largest_community_avg_num_followers,
@@ -468,8 +498,14 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "second_largest_community_t5": second_largest_community_t5,
         "second_largest_community_t10": second_largest_community_t10,
         "second_largest_community_t20": second_largest_community_t20,
-        "second_largest_community_t90": second_largest_community_t90,
+        "second_largest_community_t30": second_largest_community_t30,
+        "second_largest_community_t40": second_largest_community_t40,
         "second_largest_community_t50": second_largest_community_t50,
+        "second_largest_community_t60": second_largest_community_t60,
+        "second_largest_community_t70": second_largest_community_t70,
+        "second_largest_community_t80": second_largest_community_t80,
+        "second_largest_community_t90": second_largest_community_t90,
+        "second_largest_community_t95": second_largest_community_t95,
         "highest_betweenness": highest_betweenness,
         "highest_betweenness_node1_time": highest_betweenness_node1_time,
         "highest_betweenness_node1_friends": highest_betweenness_node1_friends,

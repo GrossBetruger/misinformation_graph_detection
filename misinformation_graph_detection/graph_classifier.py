@@ -182,6 +182,6 @@ if __name__ == "__main__":
     performance_logs_dir = Path("performance_logs")
     performance_logs_dir.mkdir(exist_ok=True)
     model_name = "random_forest"
-    model_version = "v1.2"
+    model_version = "v1.3"
     with open(performance_logs_dir / f"{model_name}_{model_version}.txt", "w") as f:
         f.write(sklearn.metrics.classification_report(y_test, y_pred))
