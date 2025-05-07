@@ -145,6 +145,9 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     avg_num_friends = np.mean([G.nodes[n]["friends"] for n in G.nodes()])
     avg_num_followers = np.mean([G.nodes[n]["followers"] for n in G.nodes()])
     mean_time = np.mean([G.nodes[n]["time"] for n in G.nodes()])
+    assert mean_time > 0, f"Mean time is not greater than 0, {mean_time}"
+    log_mean_time = np.log(mean_time)
+    sqrt_mean_time = np.sqrt(mean_time)
     median_time = np.median([G.nodes[n]["time"] for n in G.nodes()])
     max_time = np.max([G.nodes[n]["time"] for n in G.nodes()])
     min_time = np.min([G.nodes[n]["time"] for n in G.nodes()])
@@ -190,6 +193,8 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "avg_num_friends": avg_num_friends,
         "avg_num_followers": avg_num_followers,
         "mean_time": mean_time,
+        "log_mean_time": log_mean_time,
+        "sqrt_mean_time": sqrt_mean_time,
         "median_time": median_time,
         "max_time": max_time,
         "min_time": min_time,
