@@ -239,6 +239,32 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
     largest_community_t50 = np.percentile(largest_community_times, 50)
     largest_community_wiener_index = average_shortest_path_length_lcc(G.subgraph(largest_community_nodes))
 
+    # second largest community features
+    if len(Counter(comm_map.values()).most_common(2)) > 1:
+        second_largest_community_id, second_largest_community_size = Counter(comm_map.values()).most_common(2)[1]
+    else:
+        second_largest_community_id, second_largest_community_size = largest_community_id, largest_community_size
+    second_largest_community_nodes = [node for node in G.nodes() if comm_map[node] == second_largest_community_id]
+    second_largest_community_avg_num_friends = np.mean([G.nodes[n]["friends"] for n in second_largest_community_nodes])
+    second_largest_community_avg_num_followers = np.mean([G.nodes[n]["followers"] for n in second_largest_community_nodes])
+    second_largest_community_mean_time = np.mean([G.nodes[n]["time"] for n in second_largest_community_nodes])
+    second_largest_community_median_time = np.median([G.nodes[n]["time"] for n in second_largest_community_nodes])
+    second_largest_community_max_time = np.max([G.nodes[n]["time"] for n in second_largest_community_nodes])
+    second_largest_community_min_time = np.min([G.nodes[n]["time"] for n in second_largest_community_nodes])
+    second_largest_community_std_time = np.std([G.nodes[n]["time"] for n in second_largest_community_nodes])
+    second_largest_community_avg_degree = np.mean([G.degree(n) for n in second_largest_community_nodes])
+    second_largest_community_density = nx.density(G.subgraph(second_largest_community_nodes))
+    second_largest_community_avg_clustering = nx.average_clustering(G.subgraph(second_largest_community_nodes))
+    second_largest_community_time_entropy = calc_time_entropy([G.nodes[n]["time"] for n in second_largest_community_nodes])
+    second_largest_community_times = [G.nodes[n]["time"] for n in second_largest_community_nodes]
+    second_largest_community_t5 = np.percentile(second_largest_community_times, 5)
+    second_largest_community_t10 = np.percentile(second_largest_community_times, 10)
+    second_largest_community_t20 = np.percentile(second_largest_community_times, 20)
+    second_largest_community_t90 = np.percentile(second_largest_community_times, 90)
+    second_largest_community_t50 = np.percentile(second_largest_community_times, 50)
+    second_largest_community_wiener_index = average_shortest_path_length_lcc(G.subgraph(second_largest_community_nodes))
+
+
     # for n in G.nodes():
     #     features = G.nodes[n]
     #     print(features)
@@ -315,11 +341,24 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "largest_community_avg_clustering": largest_community_avg_clustering,
         "largest_community_median_time": largest_community_median_time,
         "largest_community_time_entropy": largest_community_time_entropy,
-        "largest_community_t5": largest_community_t5,
-        "largest_community_t10": largest_community_t10,
-        "largest_community_t20": largest_community_t20,
-        "largest_community_t90": largest_community_t90,
-        "largest_community_t50": largest_community_t50,
+        "second_largest_community_size": second_largest_community_size,
+        "second_largest_community_avg_num_friends": second_largest_community_avg_num_friends,
+        "second_largest_community_avg_num_followers": second_largest_community_avg_num_followers,
+        "second_largest_community_mean_time": second_largest_community_mean_time,
+        "second_largest_community_median_time": second_largest_community_median_time,
+        "second_largest_community_max_time": second_largest_community_max_time,
+        "second_largest_community_min_time": second_largest_community_min_time,
+        "second_largest_community_std_time": second_largest_community_std_time,
+        "second_largest_community_avg_degree": second_largest_community_avg_degree,
+        "second_largest_community_density": second_largest_community_density,
+        "second_largest_community_avg_clustering": second_largest_community_avg_clustering,
+        "second_largest_community_time_entropy": second_largest_community_time_entropy,
+        "second_largest_community_wiener_index": second_largest_community_wiener_index,
+        "second_largest_community_t5": second_largest_community_t5,
+        "second_largest_community_t10": second_largest_community_t10,
+        "second_largest_community_t20": second_largest_community_t20,
+        "second_largest_community_t90": second_largest_community_t90,
+        "second_largest_community_t50": second_largest_community_t50,
         "highest_betweenness": highest_betweenness,
         "highest_betweenness_node1_time": highest_betweenness_node1_time,
         "highest_betweenness_node1_friends": highest_betweenness_node1_friends,
@@ -335,6 +374,10 @@ def analyze_community_structure(G: nx.Graph) -> Dict[str, Any]:
         "highest_betweenness_node2_median_depth": median_depth_node2,
         "follower_diff_node2_root": follower_diff_node2_root,
         }
+    # find infinite values
+    for key, value in graph_features.items():
+        if isinstance(value, float) and np.isinf(value):
+            raise ValueError(f"Infinite value found in {key}: {value}")
     return graph_features
 
 

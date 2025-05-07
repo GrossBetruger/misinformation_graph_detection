@@ -110,19 +110,9 @@ if __name__ == "__main__":
     Xy_bal = pd.concat(dfs).reset_index(drop=True)
     assert len(Xy_bal) == num_samples_min_class * len(y.unique())
                                         
-    # # merge labels 0 and 1 
-    # Xy_bal["y"] = Xy_bal["y"].apply(lambda x: 0 if x in [0, 1] else 1)
-
-    # print("Balanced Dataset: ", Xy_bal.head())
-    # print()
-    # print("Labels: ", Xy_bal["y"].value_counts())
-    # y_bal = Xy_bal["y"]
-    # X_bal = Xy_bal.drop(columns=["y"])
-
-
     y = y.apply(lambda x: 0 if x in [0, 1] else 1) # merge conspiracy and 5g conspiracy
     X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(
-        X, y, test_size=0.2
+        X, y, test_size=0.1
     )
 
     model = train_model(X_train, y_train)
@@ -154,10 +144,12 @@ if __name__ == "__main__":
         model, X_test, y_test, n_repeats=5, random_state=0, scoring=scoring
     )
     importances = perm_imp.importances_mean
-    threshold = np.percentile(importances, 20)  # drop bottom 20%
+    threshold = np.percentile(importances, 30)  # drop bottom 20%
     feat_imp = pd.Series(importances, index=X_train.columns)
     feat_imp_sorted = feat_imp.sort_values(ascending=False)
 
+    # show all Series in print 
+    pd.set_option('display.max_rows', None)
     print()
     print("permutation importances:\n", feat_imp_sorted)
     print()
