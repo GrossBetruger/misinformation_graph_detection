@@ -104,13 +104,13 @@ class GCNGraphClassifier(torch.nn.Module):
         self.feat_mask_p = feat_mask_p
         self.edge_dropout_p = edge_dropout_p
         self.feat_mask = torch.nn.Dropout(p=feat_mask_p)
-        self.conv1 = SAGEConv(NUM_FEATURES, BASE_HIDDEN)
+        self.conv1 = GCNConv(NUM_FEATURES, BASE_HIDDEN)
         self.norm1 = GraphNorm(BASE_HIDDEN)
-        self.conv2 = SAGEConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.conv2 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm2 = GraphNorm(BASE_HIDDEN)
-        self.conv3 = SAGEConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.conv3 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm3 = GraphNorm(BASE_HIDDEN)
-        self.conv4 = SAGEConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.conv4 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm4 = GraphNorm(BASE_HIDDEN)
         self.lin = Linear(BASE_HIDDEN, 3)
         self.dropout = Dropout(0.2)
