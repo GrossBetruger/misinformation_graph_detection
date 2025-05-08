@@ -6,7 +6,9 @@ from misinformation_graph_detection.graph_classifier import load_graphs
 import kagglehub
 from pathlib import Path
 import networkx as nx
-from torch_geometric.nn import BatchNorm
+from torch_geometric.nn import BatchNorm, GraphNorm
+from sklearn.preprocessing import StandardScaler
+
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
@@ -41,12 +43,24 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     x = [[G.nodes[n][k] for k in ("time","friends","followers")] for n in G.nodes()]
     vals = torch.tensor(x, dtype=torch.float)       # shape [N,3]
     # per‑graph normalization to zero‑mean/unit‑std
-    vals = (vals - vals.mean(0)) / (vals.std(0) + 1e-6)
+    # vals = (vals - vals.mean(0)) / (vals.std(0) + 1e-6)
     data = from_networkx(G)
     data.x = vals
+    scaler = StandardScaler()
+    data.x = torch.tensor(scaler.fit_transform(data.x), dtype=torch.float)
+
     data.y = torch.tensor(label, dtype=torch.long)  # scalar, NOT [label]
     return data
 
+
+
+mean_conspiracy_graph_size = sum([G.number_of_edges() for G in conspiracy_graphs]) / len(conspiracy_graphs)
+mean_fiveg_conspiracy_graph_size = sum([G.number_of_edges() for G in fiveg_conspiracy_graphs]) / len(fiveg_conspiracy_graphs)
+mean_non_conspiracy_graph_size = sum([G.number_of_edges() for G in non_conspiracy_graphs]) / len(non_conspiracy_graphs)
+
+print(f"Mean conspiracy graph size: {mean_conspiracy_graph_size}")
+print(f"Mean fiveg conspiracy graph size: {mean_fiveg_conspiracy_graph_size}")
+print(f"Mean non conspiracy graph size: {mean_non_conspiracy_graph_size}")
 
 
 # Create dataset: 100 graphs (half label 0, half label 1)
@@ -54,7 +68,7 @@ conspiracy_graphs = [create_graph(G, 0) for G in conspiracy_graphs]
 fiveg_conspiracy_graphs = [create_graph(G, 1) for G in fiveg_conspiracy_graphs]
 non_conspiracy_graphs = [create_graph(G, 2) for G in non_conspiracy_graphs]
 
-dataset = conspiracy_graphs + fiveg_conspiracy_graphs + non_conspiracy_graphs[:(len(conspiracy_graphs) + len(fiveg_conspiracy_graphs))] # TODO: remove balance
+dataset = conspiracy_graphs + fiveg_conspiracy_graphs + non_conspiracy_graphs[:((len(conspiracy_graphs) + len(fiveg_conspiracy_graphs))//2)] # TODO: remove balance
 random.shuffle(dataset)
 
 # Train/test split
@@ -69,10 +83,13 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 class GCNGraphClassifier(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = GCNConv(3, 16); self.bn1 = BatchNorm(16)
-        self.conv2 = GCNConv(16,32); self.bn2 = BatchNorm(32)
-        self.conv3 = GCNConv(32,64); self.bn3 = BatchNorm(64)
-        self.lin   = torch.nn.Linear(32, 3)
+        self.conv1 = GCNConv(3, 32)
+        self.bn1 = GraphNorm(32)
+        self.conv2 = GCNConv(32, 64)
+        self.bn2 = GraphNorm(64)
+        self.conv3 = GCNConv(64, 128)
+        self.bn3 = GraphNorm(128)
+        self.lin = torch.nn.Linear(128, 3)
         self.dropout = torch.nn.Dropout(0.5)
 
     def forward(self, x, edge_index, batch):
@@ -80,13 +97,15 @@ class GCNGraphClassifier(torch.nn.Module):
         x = self.dropout(x)
         x = F.relu(self.bn2(self.conv2(x, edge_index)))
         x = self.dropout(x)
+        x = F.relu(self.bn3(self.conv3(x, edge_index)))
+        x = self.dropout(x)
         x = global_mean_pool(x, batch)
         return self.lin(x)
 
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=5e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=5e-4)
 loss_fn = torch.nn.CrossEntropyLoss()
 
 def train():
@@ -121,7 +140,8 @@ def test(loader):
         correct += (pred == data.y).sum().item()
     return correct / len(loader.dataset)
 
-for epoch in range(1,300):
+
+for epoch in range(1,501):
     train_loss, train_acc = train()
     test_acc = test(test_loader)
     print(f"Epoch {epoch:03d}  train_loss={train_loss:.4f}  train_acc={train_acc:.2%}  test_acc={test_acc:.2%}")
