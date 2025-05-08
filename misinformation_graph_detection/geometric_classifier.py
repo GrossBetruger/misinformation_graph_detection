@@ -10,25 +10,26 @@ from pathlib import Path
 import networkx as nx
 from torch_geometric.nn import GraphNorm, global_add_pool
 from torch_geometric.utils import dropout_edge
+from torch.optim.lr_scheduler import OneCycleLR
+
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GCNConv, global_mean_pool
+import random
 
 from sklearn.preprocessing import StandardScaler
 from torch.nn import Linear, Dropout
 from sklearn.metrics import f1_score, classification_report
+import plotly.express as px
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
 
+BASE_MAX_LR = 1e-3
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
 
 
-import torch
-import torch.nn.functional as F
-from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
-from torch_geometric.nn import GCNConv, global_mean_pool
-import networkx as nx
-import random
 
 # ----------- Create synthetic graph dataset -----------
 
@@ -85,25 +86,28 @@ train_loader = DataLoader(train_dataset, batch_size=16)
 test_loader = DataLoader(test_dataset, batch_size=16)
 
 # ----------- Define GNN Model for graph classification -----------
+BASE_HIDDEN = 32
 
 
 class GCNGraphClassifier(torch.nn.Module):
-    def __init__(self, feat_mask_p=0.1):
+    def __init__(self, feat_mask_p=0.1, edge_dropout_p=0.1):
         super().__init__()
+        self.feat_mask_p = feat_mask_p
+        self.edge_dropout_p = edge_dropout_p
         self.feat_mask = torch.nn.Dropout(p=feat_mask_p)
-        self.conv1 = GCNConv(3, 32)
-        self.norm1 = GraphNorm(32)
-        self.conv2 = GCNConv(32, 32)
-        self.norm2 = GraphNorm(32)
-        self.conv3 = GCNConv(32, 32)
-        self.norm3 = GraphNorm(32)
-        self.lin = Linear(32, 3)
+        self.conv1 = GCNConv(3, BASE_HIDDEN)
+        self.norm1 = GraphNorm(BASE_HIDDEN)
+        self.conv2 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.norm2 = GraphNorm(BASE_HIDDEN)
+        self.conv3 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.norm3 = GraphNorm(BASE_HIDDEN)
+        self.lin = Linear(BASE_HIDDEN, 3)
         self.dropout = Dropout(0.5)
 
     def forward(self, x, edge_index, batch):
         # During training randomly drop 10 % of edges → model stops memorising exact cascades
         if self.training:
-            edge_index, _ = dropout_edge(edge_index, p=0.1)
+            edge_index, _ = dropout_edge(edge_index, p=self.edge_dropout_p)
             x = self.feat_mask(x)
         # 1) 1st convolution + GraphNorm + activation + dropout
         x1 = F.relu(self.norm1(self.conv1(x, edge_index)))
@@ -134,11 +138,23 @@ class GCNGraphClassifier(torch.nn.Module):
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=5e-4)
 loss_fn = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR, weight_decay=5e-4)
+
+# 5) Hook up OneCycleLR with the scaled max_lr
+
+hidden_dim = model.conv1.out_channels
+
+# 3) Compute a scaling factor ∝ sqrt(curr / base)
+scale = (hidden_dim / BASE_HIDDEN) ** 0.5
+max_lr = BASE_MAX_LR * scale
 
 
-def train():
+epochs = 100
+steps_per_epoch = len(train_loader)
+
+
+def train(scheduler: OneCycleLR):
     model.train()
     total_loss = 0
     correct = 0
@@ -150,6 +166,7 @@ def train():
         loss = loss_fn(out, data.y)
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         total_loss += loss.item() * data.num_graphs
         pred = out.argmax(dim=1)
@@ -184,7 +201,8 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
             ps.append(pred.cpu())
     y_true = torch.cat(ys).numpy()
     y_pred = torch.cat(ps).numpy()
-
+    
+    loss = loss_fn(out, data.y)
     acc = (y_true == y_pred).mean()
     # per‑class F1: array of shape [n_classes]
     f1_per_class = f1_score(y_true, y_pred, average=None)
@@ -194,16 +212,39 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     report = classification_report(
         y_true,
         y_pred,
+        labels=[0, 1, 2],
         target_names=["conspiracy", "fiveg_conspiracy", "non_conspiracy"],
         zero_division=0,
     )
-    return acc, f1_per_class, f1_macro, report
+    return acc, f1_per_class, f1_macro, report, loss
 
 
-num_epochs = 700
+num_epochs = 200
+scheduler = OneCycleLR(
+    optimizer,
+    max_lr=max_lr,
+    epochs=num_epochs,
+    steps_per_epoch=steps_per_epoch,
+    pct_start=0.3,       # 30% of cycle ramp‐up, 70% anneal
+    anneal_strategy="cos"  # cosine down‐ramp
+)
+
+test_acc_history = []
+f1_mac_history = []
+loss_history = []
+
 for epoch in range(1, num_epochs + 1):
-    train_loss, train_acc = train()
-    test_acc, f1_pc, f1_mac, rpt = evaluate(test_loader)
+    if epoch > 100:
+        model.feat_mask_p = 0.0
+        model.edge_dropout_p = 0.0
+    train_loss, train_acc = train(scheduler)
+    if epoch % 100 == 0:
+        epoch_lr = scheduler.get_last_lr()[0]
+        print(f"Epoch {epoch:03d} completed. Learning rate is now {epoch_lr:.6f}")
+    test_acc, f1_pc, f1_mac, rpt, loss = evaluate(test_loader)
+    test_acc_history.append(test_acc)
+    f1_mac_history.append(f1_mac)
+    loss_history.append(loss)
 
     print(
         f"Epoch {epoch:03d}  "
@@ -214,6 +255,15 @@ for epoch in range(1, num_epochs + 1):
         f"F1_per_class={[f'{x:.3f}' for x in f1_pc]}"
     )
 
+# plot test accuracy and f1 macro
+fig = px.line(loss_history, title="Loss")
+fig.show()
+
+fig = px.line(test_acc_history, title="Test Accuracy")
+fig.show()
+
+fig = px.line(f1_mac_history, title="F1 Macro")
+fig.show()
 
 human_readable_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 # save model
