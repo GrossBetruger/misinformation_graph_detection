@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 import torch.nn.functional as F
 import torch.multiprocessing as _mp
-
+import plotly.express as px
 # Avoid semaphore IPC entirely
 _mp.set_sharing_strategy("file_system")
 
@@ -26,7 +26,7 @@ _mp.set_sharing_strategy("file_system")
 PATH: Path | None = None
 
 
-def load_graphs(graphs_dir: Path) -> list[nx.Graph]:
+def load_graphs(graphs_dir: Path) -> tuple[list[nx.Graph], list[nx.Graph], list[nx.Graph]]:
     """
     Load all graphs from a directory of subfolders, each containing 'edges.txt' and 'nodes.csv'.
     """
@@ -110,6 +110,7 @@ def train_pytorch_model(model, X_df, y_series,
     loss_fn = torch.nn.CrossEntropyLoss()
 
     n = X.size(0)
+    losses = []
     for epoch in range(1, epochs+1):
         perm = torch.randperm(n, device=device)
         total_loss = 0.0
@@ -120,23 +121,20 @@ def train_pytorch_model(model, X_df, y_series,
 
             opt.zero_grad()
             logits = model(xb)
-            loss   = loss_fn(logits, yb)
+            loss = loss_fn(logits, yb)
             loss.backward()
             opt.step()
-
+            losses.append(loss.item())
             total_loss += loss.item()
 
         print(f"Epoch {epoch}/{epochs}  loss={total_loss/(n/batch_size):.4f}")
+    
+    return model, losses
 
-    return model
 
-
-if __name__ == "__main__":
+if __name__ == "__main__":    
     performance_logs_dir = Path("performance_logs")
     performance_logs_dir.mkdir(exist_ok=True)
-
-    import multiprocessing
-    multiprocessing.set_start_method("spawn", force=True)
     # Download dataset from Kaggle
     path = kagglehub.dataset_download("arashnic/misinfo-graph")
     PATH = Path(path)
@@ -193,13 +191,34 @@ if __name__ == "__main__":
     print("🚩 y_train unique labels & counts:\n", y_train.value_counts())
 
     pytorch_model = torch.nn.Sequential(
+        # ── Block 1 ──
         torch.nn.Linear(X_train.shape[1], 100),
-        torch.nn.ReLU(),
+        torch.nn.BatchNorm1d(100),
+        torch.nn.GELU(),
+        torch.nn.Dropout(0.2),
+
+        # ── Block 2 ──
         torch.nn.Linear(100, 50),
-        torch.nn.ReLU(),
-        torch.nn.Linear(50, 2),
+        torch.nn.BatchNorm1d(50),
+        torch.nn.GELU(),
+        torch.nn.Dropout(0.2),
+
+        # ── Block 3 ──
+        torch.nn.Linear(50, 25),
+        torch.nn.BatchNorm1d(25),
+        torch.nn.GELU(),
+        torch.nn.Dropout(0.2),
+
+        # ── Output ──
+        torch.nn.Linear(25, 2),
     )
-    train_pytorch_model(pytorch_model, X_train, y_train, epochs=2000)
+    # Xavier init for all Linear layers
+    for m in pytorch_model:
+        if isinstance(m, torch.nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            torch.nn.init.zeros_(m.bias)
+
+    pytorch_model, losses = train_pytorch_model(pytorch_model, X_train, y_train, epochs=3000)
     pytorch_model.eval()
     
     with torch.no_grad():
@@ -217,6 +236,9 @@ if __name__ == "__main__":
         print(conf_matrix)
         with open(performance_logs_dir / "nn_confusion_matrix.txt", "w") as f:
             f.write(str(conf_matrix))
+    
+    # plot losses
+    px.line(losses, title="Loss").show()
 
     model = train_model(X_train, y_train)
     # test model
