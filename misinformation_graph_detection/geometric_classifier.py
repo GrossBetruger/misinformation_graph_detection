@@ -14,7 +14,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, GATConv
 import random
 
 from sklearn.preprocessing import StandardScaler
@@ -22,15 +22,21 @@ from torch.nn import Linear, Dropout
 from sklearn.metrics import f1_score, classification_report
 import plotly.express as px
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
 
-BASE_MAX_LR = 1e-3
+BASE_MAX_LR = 1e-4
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
 
+conspiracy_average_ds_size = (
+    len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
+) // 2
+
+non_conspiracy_graphs = random.sample(non_conspiracy_graphs, conspiracy_average_ds_size)
 
 # ----------- Create synthetic graph dataset -----------
 def create_graph(G: nx.Graph, label: int) -> Data:
@@ -43,7 +49,8 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     data.x = vals
     # add degree as a feature
     deg = degree(data.edge_index[0], data.num_nodes).unsqueeze(1)
-    data.x = torch.cat([data.x, deg], dim=1)  # now [N,4]
+    # node_betweenness = torch.tensor(nx.betweenness_centrality(G, normalized=True).values(), dtype=torch.float).unsqueeze(1)
+    data.x = torch.cat([data.x, deg], dim=1)  
     # add times as a edge weight
 
     times = torch.tensor([G.nodes[n]["time"] for n in G.nodes()], dtype=torch.float)
@@ -75,17 +82,17 @@ print(f"Mean non conspiracy graph size: {mean_non_conspiracy_graph_size}")
 
 
 # Create dataset: 100 graphs (half label 0, half label 1)
-conspiracy_graphs = [create_graph(G, 0) for G in conspiracy_graphs]
-fiveg_conspiracy_graphs = [create_graph(G, 1) for G in fiveg_conspiracy_graphs]
-non_conspiracy_graphs = [create_graph(G, 2) for G in non_conspiracy_graphs]
+print("parsing conspiracy graphs...")
+conspiracy_graphs = [create_graph(G, 0) for G in tqdm(conspiracy_graphs)]
+print("parsing fiveg conspiracy graphs...")
+fiveg_conspiracy_graphs = [create_graph(G, 1) for G in tqdm(fiveg_conspiracy_graphs)]
+print("parsing non conspiracy graphs...")
+non_conspiracy_graphs = [create_graph(G, 2) for G in tqdm(non_conspiracy_graphs)]
 
-conspiracy_average_ds_size = (
-    len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
-) // 2
 dataset = (
     conspiracy_graphs
     + fiveg_conspiracy_graphs
-    + random.sample(non_conspiracy_graphs, conspiracy_average_ds_size)
+    + non_conspiracy_graphs
 )  # TODO: remove balance
 random.shuffle(dataset)
 
@@ -108,11 +115,11 @@ class GCNGraphClassifier(torch.nn.Module):
         self.feat_mask_p = feat_mask_p
         self.edge_dropout_p = edge_dropout_p
         self.feat_mask = torch.nn.Dropout(p=feat_mask_p)
-        self.conv1 = GCNConv(NUM_FEATURES, BASE_HIDDEN)
+        self.conv1 = GATConv(NUM_FEATURES, BASE_HIDDEN)
         self.norm1 = GraphNorm(BASE_HIDDEN)
-        self.conv2 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.conv2 = GATConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm2 = GraphNorm(BASE_HIDDEN)
-        self.conv3 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.conv3 = GATConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm3 = GraphNorm(BASE_HIDDEN)
         self.conv4 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm4 = GraphNorm(BASE_HIDDEN)
@@ -248,7 +255,7 @@ def load_model(model: torch.nn.Module, model_path: str):
     return model
 
 
-NUM_EPOCHS = 450
+NUM_EPOCHS = 220
 # 5) Hook up OneCycleLR with the scaled max_lr
 hidden_dim = model.conv1.out_channels
 # 3) Compute a scaling factor ∝ sqrt(curr / base)
