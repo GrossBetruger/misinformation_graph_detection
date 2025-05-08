@@ -45,11 +45,11 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     data.x = torch.cat([data.x, deg], dim=1)  # now [N,4]
     # add times as a edge weight
 
-    # times = torch.tensor([G.nodes[n]['time'] for n in G.nodes()], dtype=torch.float)
-    # # 1b) compute edge_index as usual, then per‐edge |Δt|
-    # src, dst = data.edge_index
-    # edge_weight = torch.abs(times[src] - times[dst])  # [E]
-    # data.edge_weight = edge_weight
+    times = torch.tensor([G.nodes[n]['time'] for n in G.nodes()], dtype=torch.float)
+    # 1b) compute edge_index as usual, then per‐edge |Δt|
+    src, dst = data.edge_index
+    edge_weight = torch.abs(times[src] - times[dst])  # [E]
+    data.edge_weight = edge_weight
 
     scaler = StandardScaler()
     data.x = torch.tensor(scaler.fit_transform(data.x), dtype=torch.float)
@@ -116,47 +116,39 @@ class GCNGraphClassifier(torch.nn.Module):
         self.dropout = Dropout(0.2)
     # now accept edge_weight
 
-    def forward(self, x, edge_index, batch, edge_weight=None):
+    def forward(self, x, edge_index, batch, edge_weight):
+        # --- 1. training-time edge dropout ----------------------------------
         if self.training and self.edge_dropout_p > 0:
-            # During training randomly drop 10 % of edges → model stops memorising exact cascades
-            edge_index, _ = dropout_edge(edge_index, p=self.edge_dropout_p)
+            edge_index, edge_mask = dropout_edge(
+                edge_index, p=self.edge_dropout_p, training=True
+            )  # returns new edge_index *and* mask  :contentReference[oaicite:2]{index=2}
+            if edge_weight is not None:        # keep weights in sync
+                edge_weight = edge_weight[edge_mask]
             x = self.feat_mask(x)
 
-        # pass edge_weight into each GCNConv
-        x1 = F.relu(self.norm1(self.conv1(
-            x, edge_index
-        )))
+        # --- 2. GCN layers now receive edge_weight --------------------------
+        x1 = F.relu(self.norm1(self.conv1(x, edge_index, edge_weight)))
         x1 = self.dropout(x1)
 
-        h2 = self.norm2(self.conv2(
-            x1, edge_index
-        ))
-        x2 = F.relu(h2 + x1)
-        x2 = self.dropout(x2)
+        h2 = self.norm2(self.conv2(x1, edge_index, edge_weight))
+        x2 = F.relu(h2 + x1);  x2 = self.dropout(x2)
 
-        h3 = self.norm3(self.conv3(
-            x2, edge_index
-        ))
-        x3 = F.relu(h3 + x2)
-        x3 = self.dropout(x3)
+        h3 = self.norm3(self.conv3(x2, edge_index, edge_weight))
+        x3 = F.relu(h3 + x2);  x3 = self.dropout(x3)
 
-        h4 = self.norm4(self.conv4( 
-            x3, edge_index
-        ))
-        x4 = F.relu(h4 + x3)
-        x4 = self.dropout(x4)
+        h4 = self.norm4(self.conv4(x3, edge_index, edge_weight))
+        x4 = F.relu(h4 + x3);  x4 = self.dropout(x4)
 
+        # --- 3. graph-level pooling & head ----------------------------------
         pooled = global_add_pool(x4, batch)
-        counts = torch.bincount(batch).unsqueeze(1).float()
-        pooled = pooled / counts
-
+        pooled = pooled / torch.bincount(batch).unsqueeze(1).float()
         return self.lin(pooled)
 
 
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-class_weights = torch.tensor([1.0, 1.2, 1.0], device=device) # higher weight for 5g conspiracy
+class_weights = torch.tensor([1.0, 1.6, 1.4], device=device) # higher weight for 5g conspiracy
 loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
 optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR, weight_decay=5e-4)
 
@@ -270,7 +262,7 @@ loss_history = []
 
 # early stopping
 best_f1 = 0.0
-patience = 30
+patience = 40
 epochs_since_best = 0
 
 for epoch in range(1, NUM_EPOCHS + 1):
