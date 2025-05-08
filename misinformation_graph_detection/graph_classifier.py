@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import sklearn
 from tqdm import tqdm
-import xgboost
+
 from misinformation_graph_detection.analyze import (
     analyze_community_structure,
     load_graphs_from_dir,
@@ -13,6 +13,14 @@ from misinformation_graph_detection.analyze import (
 from sklearn.inspection import permutation_importance
 import kagglehub
 import networkx as nx
+
+import torch
+from torch.utils.data import TensorDataset, DataLoader
+import torch.nn.functional as F
+import torch.multiprocessing as _mp
+
+# Avoid semaphore IPC entirely
+_mp.set_sharing_strategy("file_system")
 
 """Placeholder for dataset path; download only when run as script."""
 PATH: Path | None = None
@@ -86,12 +94,49 @@ def train_model(
     )
 
     # model = xgboost.XGBClassifier()
-
     model.fit(X_train, y_train)
     return model
 
 
+def train_pytorch_model(model, X_df, y_series,
+                        epochs=1000, batch_size=64, lr=1e-4):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    X = torch.tensor(X_df.values, dtype=torch.float32, device=device)
+    y = torch.tensor(y_series.values, dtype=torch.long,   device=device)
+
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+    n = X.size(0)
+    for epoch in range(1, epochs+1):
+        perm = torch.randperm(n, device=device)
+        total_loss = 0.0
+
+        for i in range(0, n, batch_size):
+            idx = perm[i : i + batch_size]
+            xb, yb = X[idx], y[idx]
+
+            opt.zero_grad()
+            logits = model(xb)
+            loss   = loss_fn(logits, yb)
+            loss.backward()
+            opt.step()
+
+            total_loss += loss.item()
+
+        print(f"Epoch {epoch}/{epochs}  loss={total_loss/(n/batch_size):.4f}")
+
+    return model
+
+
 if __name__ == "__main__":
+    performance_logs_dir = Path("performance_logs")
+    performance_logs_dir.mkdir(exist_ok=True)
+
+    import multiprocessing
+    multiprocessing.set_start_method("spawn", force=True)
     # Download dataset from Kaggle
     path = kagglehub.dataset_download("arashnic/misinfo-graph")
     PATH = Path(path)
@@ -118,8 +163,62 @@ if __name__ == "__main__":
         X, y, test_size=0.1
     )
 
-    model = train_model(X_train, y_train)
+    # compute medians on train only
+    medians = X_train.median()
 
+    # fill both train & test with *train* medians
+    X_train = X_train.fillna(medians)
+    X_test = X_test.fillna(medians)
+
+    from sklearn.preprocessing import StandardScaler
+
+    scaler = StandardScaler()
+    X_train = pd.DataFrame(
+        scaler.fit_transform(X_train),
+        columns=X_train.columns,
+        index=X_train.index,
+    )
+    X_test = pd.DataFrame(
+        scaler.transform(X_test),
+        columns=X_test.columns,
+        index=X_test.index,
+    )
+
+    # DL:
+    #  ─── immediately after X_train, X_test, y_train, y_test are defined ───
+
+    print("🚩 any NaN in X_train?  ", X_train.isna().any().any())
+    print("🚩 any ±Inf in X_train? ", np.isinf(X_train.values).any())
+    print("🚩 X_train stats:\n", X_train.describe().T[["min","max","mean","std"]])
+    print("🚩 y_train unique labels & counts:\n", y_train.value_counts())
+
+    pytorch_model = torch.nn.Sequential(
+        torch.nn.Linear(X_train.shape[1], 100),
+        torch.nn.ReLU(),
+        torch.nn.Linear(100, 50),
+        torch.nn.ReLU(),
+        torch.nn.Linear(50, 2),
+    )
+    train_pytorch_model(pytorch_model, X_train, y_train, epochs=2000)
+    pytorch_model.eval()
+    
+    with torch.no_grad():
+        X_test_tensor = torch.tensor(X_test.values, dtype=torch.float32)
+        y_pred = pytorch_model(X_test_tensor)
+        # calc accuracy
+        y_pred = torch.argmax(y_pred, dim=1)
+        y_test = y_test.values   
+        y_pred = y_pred.cpu().numpy()
+        accuracy = np.sum(y_pred == y_test) / len(y_test)
+        print(f"Accuracy: {accuracy:.4f}")
+
+        # log confusion matrix
+        conf_matrix = sklearn.metrics.confusion_matrix(y_test, y_pred)
+        print(conf_matrix)
+        with open(performance_logs_dir / "nn_confusion_matrix.txt", "w") as f:
+            f.write(str(conf_matrix))
+
+    model = train_model(X_train, y_train)
     # test model
     y_pred = model.predict(X_test)
     print()
@@ -179,8 +278,7 @@ if __name__ == "__main__":
     print(performance_str)
 
     # save performance metrics into performance_logs dir
-    performance_logs_dir = Path("performance_logs")
-    performance_logs_dir.mkdir(exist_ok=True)
+  
     model_name = "random_forest"
     model_version = "v1.3"
     with open(performance_logs_dir / f"{model_name}_{model_version}.txt", "w") as f:

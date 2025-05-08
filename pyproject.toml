@@ -6,7 +6,7 @@ authors = ["GrossBetruger <koriatoren@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.10"
 kagglehub = "^0.3.12"
 networkx = "^3.4.2"
 pandas = "^2.2.3"
@@ -15,9 +15,8 @@ black = "^25.1.0"
 matplotlib = "^3.10.1"
 scipy = "^1.15.2"
 scikit-learn = "^1.6.1"
-xgboost = "^3.0.0"
 plotly = "^6.0.1"
-
+torch = "^2.7.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
