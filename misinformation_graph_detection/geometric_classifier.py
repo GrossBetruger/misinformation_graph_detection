@@ -157,10 +157,11 @@ class GCNGraphClassifier(torch.nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
 class_weights = torch.tensor(
-    [1.0, 1.6, 1.4], device=device
+    [1.0, 1.0, 1.0],  # [1.0, 1.6, 1.4],
+    device=device
 )  # higher weight for 5g conspiracy
 loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR, weight_decay=5e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR)
 
 
 def train(scheduler: OneCycleLR):
