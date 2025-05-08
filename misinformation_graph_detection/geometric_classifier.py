@@ -78,12 +78,11 @@ conspiracy_graphs = [create_graph(G, 0) for G in conspiracy_graphs]
 fiveg_conspiracy_graphs = [create_graph(G, 1) for G in fiveg_conspiracy_graphs]
 non_conspiracy_graphs = [create_graph(G, 2) for G in non_conspiracy_graphs]
 
+conspiracy_average_ds_size = (len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)) // 2
 dataset = (
     conspiracy_graphs
     + fiveg_conspiracy_graphs
-    + non_conspiracy_graphs[
-        : ((len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)) // 2)
-    ]
+    + random.sample(non_conspiracy_graphs, conspiracy_average_ds_size)
 )  # TODO: remove balance
 random.shuffle(dataset)
 
@@ -279,11 +278,11 @@ for epoch in range(1, NUM_EPOCHS + 1):
         epochs_since_best = 0
         save_model(model, epoch)
         # torch.save(model.state_dict(), "best.pth")
-    else:
-        epochs_since_best += 1
-        if epochs_since_best >= patience:
-            print("Early stopping at", epoch)
-            break
+    # else:
+    #     epochs_since_best += 1
+    #     if epochs_since_best >= patience:
+    #         print("Early stopping at", epoch)
+    #         break
 
     test_acc_history.append(test_acc)
     f1_mac_history.append(f1_mac)
