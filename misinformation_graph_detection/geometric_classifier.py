@@ -195,20 +195,20 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     with torch.no_grad():
         for data in loader:
             data = data.to(device)
-            out = model(data.x, data.edge_index, data.batch)
-            pred = out.argmax(dim=1)
+            out = model(data.x, data.edge_index, data.batch, data.edge_weight)
             losses.append(loss_fn(out, data.y).item() * data.num_graphs)
+
+            ps.append(out.argmax(1).cpu())
             ys.append(data.y.cpu())
-            ps.append(pred.cpu())
-    y_true = torch.cat(ys).numpy()
-    y_pred = torch.cat(ps).numpy()
-    loss = sum(losses) / len(loader.dataset)  # averaged over all graphs
-    acc = (y_true == y_pred).mean()
+
+    loss = sum(losses) / len(loader.dataset)          # averaged over all graphs
+    y_true = torch.cat(ys)
+    y_pred = torch.cat(ps)
+    acc = (y_true == y_pred).float().mean().item()
     # per‑class F1: array of shape [n_classes]
     f1_per_class = f1_score(y_true, y_pred, average=None)
     # macro F1: unweighted mean of per‑class F1
     f1_macro = f1_score(y_true, y_pred, average="macro")
-    # optional nice text report
     report = classification_report(
         y_true,
         y_pred,
