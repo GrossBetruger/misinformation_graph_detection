@@ -19,6 +19,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import torch.nn.functional as F
 import torch.multiprocessing as _mp
 import plotly.express as px
+
 # Avoid semaphore IPC entirely
 _mp.set_sharing_strategy("file_system")
 
@@ -26,7 +27,9 @@ _mp.set_sharing_strategy("file_system")
 PATH: Path | None = None
 
 
-def load_graphs(graphs_dir: Path) -> tuple[list[nx.Graph], list[nx.Graph], list[nx.Graph]]:
+def load_graphs(
+    graphs_dir: Path,
+) -> tuple[list[nx.Graph], list[nx.Graph], list[nx.Graph]]:
     """
     Load all graphs from a directory of subfolders, each containing 'edges.txt' and 'nodes.csv'.
     """
@@ -98,20 +101,19 @@ def train_model(
     return model
 
 
-def train_pytorch_model(model, X_df, y_series,
-                        epochs=1000, batch_size=64, lr=1e-4):
+def train_pytorch_model(model, X_df, y_series, epochs=1000, batch_size=64, lr=1e-4):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
     X = torch.tensor(X_df.values, dtype=torch.float32, device=device)
-    y = torch.tensor(y_series.values, dtype=torch.long,   device=device)
+    y = torch.tensor(y_series.values, dtype=torch.long, device=device)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = torch.nn.CrossEntropyLoss()
 
     n = X.size(0)
     losses = []
-    for epoch in range(1, epochs+1):
+    for epoch in range(1, epochs + 1):
         perm = torch.randperm(n, device=device)
         total_loss = 0.0
 
@@ -128,11 +130,11 @@ def train_pytorch_model(model, X_df, y_series,
             total_loss += loss.item()
 
         print(f"Epoch {epoch}/{epochs}  loss={total_loss/(n/batch_size):.4f}")
-    
+
     return model, losses
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     performance_logs_dir = Path("performance_logs")
     performance_logs_dir.mkdir(exist_ok=True)
     # Download dataset from Kaggle
@@ -187,7 +189,7 @@ if __name__ == "__main__":
 
     print("🚩 any NaN in X_train?  ", X_train.isna().any().any())
     print("🚩 any ±Inf in X_train? ", np.isinf(X_train.values).any())
-    print("🚩 X_train stats:\n", X_train.describe().T[["min","max","mean","std"]])
+    print("🚩 X_train stats:\n", X_train.describe().T[["min", "max", "mean", "std"]])
     print("🚩 y_train unique labels & counts:\n", y_train.value_counts())
 
     pytorch_model = torch.nn.Sequential(
@@ -196,19 +198,16 @@ if __name__ == "__main__":
         torch.nn.BatchNorm1d(100),
         torch.nn.GELU(),
         torch.nn.Dropout(0.2),
-
         # ── Block 2 ──
         torch.nn.Linear(100, 50),
         torch.nn.BatchNorm1d(50),
         torch.nn.GELU(),
         torch.nn.Dropout(0.2),
-
         # ── Block 3 ──
         torch.nn.Linear(50, 25),
         torch.nn.BatchNorm1d(25),
         torch.nn.GELU(),
         torch.nn.Dropout(0.2),
-
         # ── Output ──
         torch.nn.Linear(25, 2),
     )
@@ -218,15 +217,17 @@ if __name__ == "__main__":
             torch.nn.init.xavier_uniform_(m.weight)
             torch.nn.init.zeros_(m.bias)
 
-    pytorch_model, losses = train_pytorch_model(pytorch_model, X_train, y_train, epochs=3000)
+    pytorch_model, losses = train_pytorch_model(
+        pytorch_model, X_train, y_train, epochs=3000
+    )
     pytorch_model.eval()
-    
+
     with torch.no_grad():
         X_test_tensor = torch.tensor(X_test.values, dtype=torch.float32)
         y_pred = pytorch_model(X_test_tensor)
         # calc accuracy
         y_pred = torch.argmax(y_pred, dim=1)
-        y_test = y_test.values   
+        y_test = y_test.values
         y_pred = y_pred.cpu().numpy()
         accuracy = np.sum(y_pred == y_test) / len(y_test)
         print(f"Accuracy: {accuracy:.4f}")
@@ -236,7 +237,7 @@ if __name__ == "__main__":
         print(conf_matrix)
         with open(performance_logs_dir / "nn_confusion_matrix.txt", "w") as f:
             f.write(str(conf_matrix))
-    
+
     # plot losses
     px.line(losses, title="Loss").show()
 
@@ -300,7 +301,7 @@ if __name__ == "__main__":
     print(performance_str)
 
     # save performance metrics into performance_logs dir
-  
+
     model_name = "random_forest"
     model_version = "v1.3"
     with open(performance_logs_dir / f"{model_name}_{model_version}.txt", "w") as f:

@@ -8,7 +8,7 @@ from misinformation_graph_detection.graph_classifier import load_graphs
 import kagglehub
 from pathlib import Path
 import networkx as nx
-from torch_geometric.nn import BatchNorm, GraphNorm, global_add_pool
+from torch_geometric.nn import GraphNorm, global_add_pool
 from torch_geometric.utils import dropout_edge
 
 from sklearn.preprocessing import StandardScaler
@@ -17,9 +17,6 @@ from sklearn.metrics import f1_score, classification_report
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
-
-
-
 
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
@@ -38,8 +35,8 @@ import random
 
 def create_graph(G: nx.Graph, label: int) -> Data:
     # collect raw features
-    x = [[G.nodes[n][k] for k in ("time","friends","followers")] for n in G.nodes()]
-    vals = torch.tensor(x, dtype=torch.float)       # shape [N,3]
+    x = [[G.nodes[n][k] for k in ("time", "friends", "followers")] for n in G.nodes()]
+    vals = torch.tensor(x, dtype=torch.float)  # shape [N,3]
     # per‑graph normalization to zero‑mean/unit‑std
     # vals = (vals - vals.mean(0)) / (vals.std(0) + 1e-6)
     data = from_networkx(G)
@@ -51,10 +48,15 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     return data
 
 
-
-mean_conspiracy_graph_size = sum([G.number_of_edges() for G in conspiracy_graphs]) / len(conspiracy_graphs)
-mean_fiveg_conspiracy_graph_size = sum([G.number_of_edges() for G in fiveg_conspiracy_graphs]) / len(fiveg_conspiracy_graphs)
-mean_non_conspiracy_graph_size = sum([G.number_of_edges() for G in non_conspiracy_graphs]) / len(non_conspiracy_graphs)
+mean_conspiracy_graph_size = sum(
+    [G.number_of_edges() for G in conspiracy_graphs]
+) / len(conspiracy_graphs)
+mean_fiveg_conspiracy_graph_size = sum(
+    [G.number_of_edges() for G in fiveg_conspiracy_graphs]
+) / len(fiveg_conspiracy_graphs)
+mean_non_conspiracy_graph_size = sum(
+    [G.number_of_edges() for G in non_conspiracy_graphs]
+) / len(non_conspiracy_graphs)
 
 print(f"Mean conspiracy graph size: {mean_conspiracy_graph_size}")
 print(f"Mean fiveg conspiracy graph size: {mean_fiveg_conspiracy_graph_size}")
@@ -66,7 +68,13 @@ conspiracy_graphs = [create_graph(G, 0) for G in conspiracy_graphs]
 fiveg_conspiracy_graphs = [create_graph(G, 1) for G in fiveg_conspiracy_graphs]
 non_conspiracy_graphs = [create_graph(G, 2) for G in non_conspiracy_graphs]
 
-dataset = conspiracy_graphs + fiveg_conspiracy_graphs + non_conspiracy_graphs[:((len(conspiracy_graphs) + len(fiveg_conspiracy_graphs))//2)] # TODO: remove balance
+dataset = (
+    conspiracy_graphs
+    + fiveg_conspiracy_graphs
+    + non_conspiracy_graphs[
+        : ((len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)) // 2)
+    ]
+)  # TODO: remove balance
 random.shuffle(dataset)
 
 # Train/test split
@@ -78,20 +86,24 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 
 # ----------- Define GNN Model for graph classification -----------
 
+
 class GCNGraphClassifier(torch.nn.Module):
     def __init__(self, feat_mask_p=0.1):
         super().__init__()
         self.feat_mask = torch.nn.Dropout(p=feat_mask_p)
-        self.conv1 = GCNConv(3, 32); self.norm1 = GraphNorm(32)
-        self.conv2 = GCNConv(32, 32); self.norm2 = GraphNorm(32)
-        self.conv3 = GCNConv(32, 32); self.norm3 = GraphNorm(32)
+        self.conv1 = GCNConv(3, 32)
+        self.norm1 = GraphNorm(32)
+        self.conv2 = GCNConv(32, 32)
+        self.norm2 = GraphNorm(32)
+        self.conv3 = GCNConv(32, 32)
+        self.norm3 = GraphNorm(32)
         self.lin = Linear(32, 3)
         self.dropout = Dropout(0.5)
 
     def forward(self, x, edge_index, batch):
         # During training randomly drop 10 % of edges → model stops memorising exact cascades
         if self.training:
-            edge_index, _ = dropout_edge(edge_index, p=0.1) 
+            edge_index, _ = dropout_edge(edge_index, p=0.1)
             x = self.feat_mask(x)
         # 1) 1st convolution + GraphNorm + activation + dropout
         x1 = F.relu(self.norm1(self.conv1(x, edge_index)))
@@ -108,21 +120,23 @@ class GCNGraphClassifier(torch.nn.Module):
         x3 = self.dropout(x3)
 
         # 4) global add‐pool (sum of node embeddings per graph)
-        pooled = global_add_pool(x3, batch)    # shape: [batch_size, hidden_dim]
+        pooled = global_add_pool(x3, batch)  # shape: [batch_size, hidden_dim]
 
         # 5) size‐normalization (divide by number of nodes per graph)
-        counts = torch.bincount(batch)         # shape: [batch_size]
+        counts = torch.bincount(batch)  # shape: [batch_size]
         pooled = pooled / counts.unsqueeze(1).float()
 
         # 6) final linear classification
-        out = self.lin(pooled)                 # shape: [batch_size, num_classes]
+        out = self.lin(pooled)  # shape: [batch_size, num_classes]
         return out
+
 
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=5e-4)
 loss_fn = torch.nn.CrossEntropyLoss()
+
 
 def train():
     model.train()
@@ -143,8 +157,9 @@ def train():
         total += data.num_graphs
 
     train_loss = total_loss / total
-    train_acc  = correct    / total
+    train_acc = correct / total
     return train_loss, train_acc
+
 
 def test(loader):
     model.eval()
@@ -155,6 +170,7 @@ def test(loader):
         pred = out.argmax(dim=1)
         correct += (pred == data.y).sum().item()
     return correct / len(loader.dataset)
+
 
 def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     model.eval()
@@ -173,10 +189,11 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     # per‑class F1: array of shape [n_classes]
     f1_per_class = f1_score(y_true, y_pred, average=None)
     # macro F1: unweighted mean of per‑class F1
-    f1_macro = f1_score(y_true, y_pred, average='macro')
+    f1_macro = f1_score(y_true, y_pred, average="macro")
     # optional nice text report
     report = classification_report(
-        y_true, y_pred,
+        y_true,
+        y_pred,
         target_names=["conspiracy", "fiveg_conspiracy", "non_conspiracy"],
         zero_division=0,
     )
@@ -184,7 +201,7 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
 
 
 num_epochs = 700
-for epoch in range(1, num_epochs+1):
+for epoch in range(1, num_epochs + 1):
     train_loss, train_acc = train()
     test_acc, f1_pc, f1_mac, rpt = evaluate(test_loader)
 
@@ -203,7 +220,10 @@ human_readable_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 models_path = Path("models")
 models_path.mkdir(exist_ok=True)
 number_of_parameters = sum(p.numel() for p in model.parameters())
-model_path = models_path / f"model_{human_readable_time}_params_{number_of_parameters}_epochs_{num_epochs}.pth"
+model_path = (
+    models_path
+    / f"model_{human_readable_time}_params_{number_of_parameters}_epochs_{num_epochs}.pth"
+)
 torch.save(model.state_dict(), model_path)
 
 print(f"Model saved to {model_path}")
