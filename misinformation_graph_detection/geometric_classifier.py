@@ -1,3 +1,5 @@
+import time
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
@@ -11,6 +13,7 @@ from torch_geometric.utils import dropout_edge
 
 from sklearn.preprocessing import StandardScaler
 from torch.nn import Linear, Dropout
+from sklearn.metrics import f1_score, classification_report
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
@@ -31,13 +34,6 @@ import networkx as nx
 import random
 
 # ----------- Create synthetic graph dataset -----------
-
-def create_graph(G: nx.Graph, label: int) -> Data:
-    # Convert to torch_geometric Data
-    data = from_networkx(G)
-    # data.x = torch.stack([G.nodes[n]['x'] for n in G.nodes()])
-    data.y = torch.tensor([label], dtype=torch.long)
-    return data
 
 
 def create_graph(G: nx.Graph, label: int) -> Data:
@@ -83,8 +79,9 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 # ----------- Define GNN Model for graph classification -----------
 
 class GCNGraphClassifier(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, feat_mask_p=0.1):
         super().__init__()
+        self.feat_mask = torch.nn.Dropout(p=feat_mask_p)
         self.conv1 = GCNConv(3, 32); self.norm1 = GraphNorm(32)
         self.conv2 = GCNConv(32, 32); self.norm2 = GraphNorm(32)
         self.conv3 = GCNConv(32, 32); self.norm3 = GraphNorm(32)
@@ -95,6 +92,7 @@ class GCNGraphClassifier(torch.nn.Module):
         # During training randomly drop 10 % of edges → model stops memorising exact cascades
         if self.training:
             edge_index, _ = dropout_edge(edge_index, p=0.1) 
+            x = self.feat_mask(x)
         # 1) 1st convolution + GraphNorm + activation + dropout
         x1 = F.relu(self.norm1(self.conv1(x, edge_index)))
         x1 = self.dropout(x1)
@@ -158,9 +156,62 @@ def test(loader):
         correct += (pred == data.y).sum().item()
     return correct / len(loader.dataset)
 
+def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
+    model.eval()
+    ys, ps = [], []
+    with torch.no_grad():
+        for data in loader:
+            data = data.to(device)
+            out = model(data.x, data.edge_index, data.batch)
+            pred = out.argmax(dim=1)
+            ys.append(data.y.cpu())
+            ps.append(pred.cpu())
+    y_true = torch.cat(ys).numpy()
+    y_pred = torch.cat(ps).numpy()
 
-for epoch in range(1,501):
+    acc = (y_true == y_pred).mean()
+    # per‑class F1: array of shape [n_classes]
+    f1_per_class = f1_score(y_true, y_pred, average=None)
+    # macro F1: unweighted mean of per‑class F1
+    f1_macro = f1_score(y_true, y_pred, average='macro')
+    # optional nice text report
+    report = classification_report(
+        y_true, y_pred,
+        target_names=["conspiracy", "fiveg_conspiracy", "non_conspiracy"],
+        zero_division=0,
+    )
+    return acc, f1_per_class, f1_macro, report
+
+
+num_epochs = 700
+for epoch in range(1, num_epochs+1):
     train_loss, train_acc = train()
-    test_acc = test(test_loader)
-    print(f"Epoch {epoch:03d}  train_loss={train_loss:.4f}  train_acc={train_acc:.2%}  test_acc={test_acc:.2%}")
+    test_acc, f1_pc, f1_mac, rpt = evaluate(test_loader)
 
+    print(
+        f"Epoch {epoch:03d}  "
+        f"train_loss={train_loss:.4f}  "
+        f"train_acc={train_acc:.2%}  "
+        f"test_acc={test_acc:.2%}  "
+        f"macro_F1={f1_mac:.3f}  "
+        f"F1_per_class={[f'{x:.3f}' for x in f1_pc]}"
+    )
+
+
+human_readable_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+# save model
+models_path = Path("models")
+models_path.mkdir(exist_ok=True)
+number_of_parameters = sum(p.numel() for p in model.parameters())
+model_path = models_path / f"model_{human_readable_time}_params_{number_of_parameters}_epochs_{num_epochs}.pth"
+torch.save(model.state_dict(), model_path)
+
+print(f"Model saved to {model_path}")
+
+# load model
+model = GCNGraphClassifier().to(device)
+model.load_state_dict(torch.load(model_path))
+
+# test model
+test_acc = test(test_loader)
+print(f"Test accuracy: {test_acc:.2%}")
