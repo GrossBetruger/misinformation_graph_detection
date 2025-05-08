@@ -190,18 +190,18 @@ def test(loader):
 
 def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     model.eval()
-    ys, ps = [], []
+    ys, ps, losses = [], [], []
     with torch.no_grad():
         for data in loader:
             data = data.to(device)
             out = model(data.x, data.edge_index, data.batch)
             pred = out.argmax(dim=1)
+            losses.append(loss_fn(out, data.y).item() * data.num_graphs)
             ys.append(data.y.cpu())
             ps.append(pred.cpu())
     y_true = torch.cat(ys).numpy()
     y_pred = torch.cat(ps).numpy()
-    
-    loss = loss_fn(out, data.y)
+    loss = sum(losses) / len(loader.dataset)  # averaged over all graphs
     acc = (y_true == y_pred).mean()
     # per‑class F1: array of shape [n_classes]
     f1_per_class = f1_score(y_true, y_pred, average=None)
