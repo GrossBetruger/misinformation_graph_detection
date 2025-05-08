@@ -6,6 +6,7 @@ from misinformation_graph_detection.graph_classifier import load_graphs
 import kagglehub
 from pathlib import Path
 import networkx as nx
+from torch_geometric.nn import BatchNorm
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
@@ -19,7 +20,8 @@ conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(
 
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Data, DataLoader
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, global_mean_pool
 import networkx as nx
 import random
@@ -33,19 +35,18 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     data.y = torch.tensor([label], dtype=torch.long)
     return data
 
+
 def create_graph(G: nx.Graph, label: int) -> Data:
-    # Extract node features as a matrix: [num_nodes, 3]
-    x = []
-    for node_id in G.nodes():
-        attr = G.nodes[node_id]
-        x.append([attr["time"], attr["friends"], attr["followers"]])
-    
-    x = torch.tensor(x, dtype=torch.float)
-    
+    # collect raw features
+    x = [[G.nodes[n][k] for k in ("time","friends","followers")] for n in G.nodes()]
+    vals = torch.tensor(x, dtype=torch.float)       # shape [N,3]
+    # per‑graph normalization to zero‑mean/unit‑std
+    vals = (vals - vals.mean(0)) / (vals.std(0) + 1e-6)
     data = from_networkx(G)
-    data.x = x
-    data.y = torch.tensor([label], dtype=torch.long)
+    data.x = vals
+    data.y = torch.tensor(label, dtype=torch.long)  # scalar, NOT [label]
     return data
+
 
 
 # Create dataset: 100 graphs (half label 0, half label 1)
@@ -53,7 +54,7 @@ conspiracy_graphs = [create_graph(G, 0) for G in conspiracy_graphs]
 fiveg_conspiracy_graphs = [create_graph(G, 1) for G in fiveg_conspiracy_graphs]
 non_conspiracy_graphs = [create_graph(G, 2) for G in non_conspiracy_graphs]
 
-dataset = conspiracy_graphs + fiveg_conspiracy_graphs + non_conspiracy_graphs
+dataset = conspiracy_graphs + fiveg_conspiracy_graphs + non_conspiracy_graphs[:(len(conspiracy_graphs) + len(fiveg_conspiracy_graphs))] # TODO: remove balance
 random.shuffle(dataset)
 
 # Train/test split
@@ -68,27 +69,31 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 class GCNGraphClassifier(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = GCNConv(3, 16)        # ← changed from 1 to 3
-        self.conv2 = GCNConv(16, 32)
-        self.lin = torch.nn.Linear(32, 3)  # ← 3-class output
+        self.conv1 = GCNConv(3, 16); self.bn1 = BatchNorm(16)
+        self.conv2 = GCNConv(16,32); self.bn2 = BatchNorm(32)
+        self.conv3 = GCNConv(32,64); self.bn3 = BatchNorm(64)
+        self.lin   = torch.nn.Linear(32, 3)
+        self.dropout = torch.nn.Dropout(0.5)
 
     def forward(self, x, edge_index, batch):
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = self.conv2(x, edge_index)
-        x = F.relu(x)
+        x = F.relu(self.bn1(self.conv1(x, edge_index)))
+        x = self.dropout(x)
+        x = F.relu(self.bn2(self.conv2(x, edge_index)))
+        x = self.dropout(x)
         x = global_mean_pool(x, batch)
         return self.lin(x)
-
 
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=5e-4)
 loss_fn = torch.nn.CrossEntropyLoss()
 
 def train():
     model.train()
+    total_loss = 0
+    correct = 0
+    total = 0
     for data in train_loader:
         data = data.to(device)
         optimizer.zero_grad()
@@ -96,6 +101,15 @@ def train():
         loss = loss_fn(out, data.y)
         loss.backward()
         optimizer.step()
+
+        total_loss += loss.item() * data.num_graphs
+        pred = out.argmax(dim=1)
+        correct += (pred == data.y).sum().item()
+        total += data.num_graphs
+
+    train_loss = total_loss / total
+    train_acc  = correct    / total
+    return train_loss, train_acc
 
 def test(loader):
     model.eval()
@@ -107,8 +121,8 @@ def test(loader):
         correct += (pred == data.y).sum().item()
     return correct / len(loader.dataset)
 
-for epoch in range(1, 1200):
-    train()
-    acc = test(test_loader)
-    print(f"Epoch {epoch:02d}, Test Accuracy: {acc:.2%}")
+for epoch in range(1,300):
+    train_loss, train_acc = train()
+    test_acc = test(test_loader)
+    print(f"Epoch {epoch:03d}  train_loss={train_loss:.4f}  train_acc={train_acc:.2%}  test_acc={test_acc:.2%}")
 
