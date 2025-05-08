@@ -94,7 +94,7 @@ train_loader = DataLoader(train_dataset, batch_size=16)
 test_loader = DataLoader(test_dataset, batch_size=16)
 
 # ----------- Define GNN Model for graph classification -----------
-BASE_HIDDEN = 64 #32
+BASE_HIDDEN = 32 #32
 
 NUM_FEATURES = 4
 
@@ -110,6 +110,8 @@ class GCNGraphClassifier(torch.nn.Module):
         self.norm2 = GraphNorm(BASE_HIDDEN)
         self.conv3 = SAGEConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm3 = GraphNorm(BASE_HIDDEN)
+        self.conv4 = SAGEConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.norm4 = GraphNorm(BASE_HIDDEN)
         self.lin = Linear(BASE_HIDDEN, 3)
         self.dropout = Dropout(0.2)
     # now accept edge_weight
@@ -138,7 +140,13 @@ class GCNGraphClassifier(torch.nn.Module):
         x3 = F.relu(h3 + x2)
         x3 = self.dropout(x3)
 
-        pooled = global_add_pool(x3, batch)
+        h4 = self.norm4(self.conv4( 
+            x3, edge_index
+        ))
+        x4 = F.relu(h4 + x3)
+        x4 = self.dropout(x4)
+
+        pooled = global_add_pool(x4, batch)
         counts = torch.bincount(batch).unsqueeze(1).float()
         pooled = pooled / counts
 
@@ -262,7 +270,7 @@ loss_history = []
 
 # early stopping
 best_f1 = 0.0
-patience = 20
+patience = 30
 epochs_since_best = 0
 
 for epoch in range(1, NUM_EPOCHS + 1):
