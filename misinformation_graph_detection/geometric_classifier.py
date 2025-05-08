@@ -148,7 +148,8 @@ class GCNGraphClassifier(torch.nn.Module):
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-loss_fn = torch.nn.CrossEntropyLoss()
+class_weights = torch.tensor([1.0, 1.2, 1.0], device=device) # higher weight for 5g conspiracy
+loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
 optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR, weight_decay=5e-4)
 
 
@@ -218,6 +219,24 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     return acc, f1_per_class, f1_macro, report, loss
 
 
+def save_model(model, epoch):
+    models_path = Path("models")
+    models_path.mkdir(exist_ok=True)
+    number_of_parameters = sum(p.numel() for p in model.parameters())
+    human_readable_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+    model_path = (
+        models_path
+        / f"model_{human_readable_time}_params_{number_of_parameters}_epochs_{NUM_EPOCHS}.pth"
+    )
+    torch.save(model.state_dict(), model_path)
+    print(f"Model saved to {model_path}")
+
+
+def load_model(model: torch.nn.Module, model_path: str):
+    model.load_state_dict(torch.load(model_path))
+    return model
+
+
 NUM_EPOCHS = 500
 # 5) Hook up OneCycleLR with the scaled max_lr
 hidden_dim = model.conv1.out_channels
@@ -245,20 +264,6 @@ loss_history = []
 best_f1 = 0.0
 patience = 20
 epochs_since_best = 0
-
-
-def save_model(model, epoch):
-    models_path = Path("models")
-    models_path.mkdir(exist_ok=True)
-    number_of_parameters = sum(p.numel() for p in model.parameters())
-    human_readable_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-    model_path = (
-        models_path
-        / f"model_{human_readable_time}_params_{number_of_parameters}_epochs_{NUM_EPOCHS}.pth"
-    )
-    torch.save(model.state_dict(), model_path)
-    print(f"Model saved to {model_path}")
-
 
 for epoch in range(1, NUM_EPOCHS + 1):
     if epoch > 100:
@@ -303,23 +308,11 @@ fig.show()
 fig = px.line(f1_mac_history, title="F1 Macro")
 fig.show()
 
-# human_readable_time = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
-# save model
-# models_path = Path("models")
-# models_path.mkdir(exist_ok=True)
-# number_of_parameters = sum(p.numel() for p in model.parameters())
-# model_path = (
-#     models_path
-#     / f"model_{human_readable_time}_params_{number_of_parameters}_epochs_{NUM_EPOCHS}.pth"
-# )
-# torch.save(model.state_dict(), model_path)
-
-# print(f"Model saved to {model_path}")
 
 # load model
-model = GCNGraphClassifier().to(device)
-model.load_state_dict(torch.load(model_path))
+# model = GCNGraphClassifier().to(device)
+# model.load_state_dict(torch.load(model_path))
 
-# test model
-test_acc = test(test_loader)
-print(f"Test accuracy: {test_acc:.2%}")
+# # test model
+# test_acc = test(test_loader)
+# print(f"Test accuracy: {test_acc:.2%}")
