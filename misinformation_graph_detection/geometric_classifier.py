@@ -164,8 +164,8 @@ def train(scheduler: OneCycleLR):
         loss = loss_fn(out, data.y)
         loss.backward()
         optimizer.step()
-        if epoch <= LR_CYCLE_EPOCHS:
-            scheduler.step()
+        # if epoch <= LR_CYCLE_EPOCHS:
+        scheduler.step()
 
         total_loss += loss.item() * data.num_graphs
         pred = out.argmax(dim=1)
@@ -236,7 +236,7 @@ def load_model(model: torch.nn.Module, model_path: str):
     return model
 
 
-NUM_EPOCHS = 500
+NUM_EPOCHS = 450
 # 5) Hook up OneCycleLR with the scaled max_lr
 hidden_dim = model.conv1.out_channels
 # 3) Compute a scaling factor ∝ sqrt(curr / base)
@@ -269,11 +269,11 @@ for epoch in range(1, NUM_EPOCHS + 1):
         model.feat_mask_p = 0.0
         model.edge_dropout_p = 0.0
     train_loss, train_acc = train(scheduler)
-    if epoch % 100 == 0:
+    if epoch > 100 and epoch % 100 == 0:
         epoch_lr = scheduler.get_last_lr()[0]
         print(f"Epoch {epoch:03d} completed. Learning rate is now {epoch_lr:.6f}")
     test_acc, f1_pc, f1_mac, rpt, loss = evaluate(test_loader)
-    if f1_mac > best_f1 + 1e-3:
+    if f1_mac > best_f1 + BASE_MAX_LR:
         best_f1 = f1_mac
         epochs_since_best = 0
         save_model(model, epoch)
