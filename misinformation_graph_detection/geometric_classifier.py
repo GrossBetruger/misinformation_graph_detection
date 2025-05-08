@@ -6,9 +6,11 @@ from misinformation_graph_detection.graph_classifier import load_graphs
 import kagglehub
 from pathlib import Path
 import networkx as nx
-from torch_geometric.nn import BatchNorm, GraphNorm
-from sklearn.preprocessing import StandardScaler
+from torch_geometric.nn import BatchNorm, GraphNorm, global_add_pool
+from torch_geometric.utils import dropout_edge
 
+from sklearn.preprocessing import StandardScaler
+from torch.nn import Linear, Dropout
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
@@ -72,8 +74,8 @@ dataset = conspiracy_graphs + fiveg_conspiracy_graphs + non_conspiracy_graphs[:(
 random.shuffle(dataset)
 
 # Train/test split
-train_dataset = dataset[:200]
-test_dataset = dataset[200:]
+train_dataset = dataset[:300]
+test_dataset = dataset[300:]
 
 train_loader = DataLoader(train_dataset, batch_size=16)
 test_loader = DataLoader(test_dataset, batch_size=16)
@@ -83,24 +85,40 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 class GCNGraphClassifier(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = GCNConv(3, 32)
-        self.bn1 = GraphNorm(32)
-        self.conv2 = GCNConv(32, 64)
-        self.bn2 = GraphNorm(64)
-        self.conv3 = GCNConv(64, 128)
-        self.bn3 = GraphNorm(128)
-        self.lin = torch.nn.Linear(128, 3)
-        self.dropout = torch.nn.Dropout(0.5)
+        self.conv1 = GCNConv(3, 32); self.norm1 = GraphNorm(32)
+        self.conv2 = GCNConv(32, 32); self.norm2 = GraphNorm(32)
+        self.conv3 = GCNConv(32, 32); self.norm3 = GraphNorm(32)
+        self.lin = Linear(32, 3)
+        self.dropout = Dropout(0.5)
 
     def forward(self, x, edge_index, batch):
-        x = F.relu(self.bn1(self.conv1(x, edge_index)))
-        x = self.dropout(x)
-        x = F.relu(self.bn2(self.conv2(x, edge_index)))
-        x = self.dropout(x)
-        x = F.relu(self.bn3(self.conv3(x, edge_index)))
-        x = self.dropout(x)
-        x = global_mean_pool(x, batch)
-        return self.lin(x)
+        # During training randomly drop 10 % of edges → model stops memorising exact cascades
+        if self.training:
+            edge_index, _ = dropout_edge(edge_index, p=0.1) 
+        # 1) 1st convolution + GraphNorm + activation + dropout
+        x1 = F.relu(self.norm1(self.conv1(x, edge_index)))
+        x1 = self.dropout(x1)
+
+        # 2) 2nd convolution + GraphNorm + activation + dropout + residual from x1
+        h2 = self.norm2(self.conv2(x1, edge_index))
+        x2 = F.relu(h2 + x1)
+        x2 = self.dropout(x2)
+
+        # 3) 3rd convolution + GraphNorm + activation + dropout + residual from x2
+        h3 = self.norm3(self.conv3(x2, edge_index))
+        x3 = F.relu(h3 + x2)
+        x3 = self.dropout(x3)
+
+        # 4) global add‐pool (sum of node embeddings per graph)
+        pooled = global_add_pool(x3, batch)    # shape: [batch_size, hidden_dim]
+
+        # 5) size‐normalization (divide by number of nodes per graph)
+        counts = torch.bincount(batch)         # shape: [batch_size]
+        pooled = pooled / counts.unsqueeze(1).float()
+
+        # 6) final linear classification
+        out = self.lin(pooled)                 # shape: [batch_size, num_classes]
+        return out
 
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
