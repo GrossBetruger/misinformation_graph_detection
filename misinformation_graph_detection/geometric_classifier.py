@@ -21,6 +21,8 @@ from sklearn.preprocessing import StandardScaler
 from torch.nn import Linear, Dropout
 from sklearn.metrics import f1_score, classification_report
 import plotly.express as px
+from sklearn.model_selection import train_test_split
+
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
 PATH = Path(path)
@@ -28,7 +30,6 @@ PATH = Path(path)
 BASE_MAX_LR = 1e-3
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
-
 
 
 # ----------- Create synthetic graph dataset -----------
@@ -45,7 +46,7 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     data.x = torch.cat([data.x, deg], dim=1)  # now [N,4]
     # add times as a edge weight
 
-    times = torch.tensor([G.nodes[n]['time'] for n in G.nodes()], dtype=torch.float)
+    times = torch.tensor([G.nodes[n]["time"] for n in G.nodes()], dtype=torch.float)
     # 1b) compute edge_index as usual, then per‐edge |Δt|
     src, dst = data.edge_index
     edge_weight = torch.abs(times[src] - times[dst])  # [E]
@@ -78,7 +79,9 @@ conspiracy_graphs = [create_graph(G, 0) for G in conspiracy_graphs]
 fiveg_conspiracy_graphs = [create_graph(G, 1) for G in fiveg_conspiracy_graphs]
 non_conspiracy_graphs = [create_graph(G, 2) for G in non_conspiracy_graphs]
 
-conspiracy_average_ds_size = (len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)) // 2
+conspiracy_average_ds_size = (
+    len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
+) // 2
 dataset = (
     conspiracy_graphs
     + fiveg_conspiracy_graphs
@@ -87,15 +90,17 @@ dataset = (
 random.shuffle(dataset)
 
 # Train/test split
-train_dataset = dataset[:300]
-test_dataset = dataset[300:]
+train_dataset, test_dataset = train_test_split(dataset, test_size=0.2)
+# train_dataset = dataset
+# test_dataset = dataset
 train_loader = DataLoader(train_dataset, batch_size=16)
 test_loader = DataLoader(test_dataset, batch_size=16)
 
 # ----------- Define GNN Model for graph classification -----------
-BASE_HIDDEN = 32 #32
+BASE_HIDDEN = 32  # 32
 
 NUM_FEATURES = 4
+
 
 class GCNGraphClassifier(torch.nn.Module):
     def __init__(self, feat_mask_p=0.1, edge_dropout_p=0.1):
@@ -113,6 +118,7 @@ class GCNGraphClassifier(torch.nn.Module):
         self.norm4 = GraphNorm(BASE_HIDDEN)
         self.lin = Linear(BASE_HIDDEN, 3)
         self.dropout = Dropout(0.2)
+
     # now accept edge_weight
 
     def forward(self, x, edge_index, batch, edge_weight):
@@ -121,7 +127,7 @@ class GCNGraphClassifier(torch.nn.Module):
             edge_index, edge_mask = dropout_edge(
                 edge_index, p=self.edge_dropout_p, training=True
             )  # returns new edge_index *and* mask  :contentReference[oaicite:2]{index=2}
-            if edge_weight is not None:        # keep weights in sync
+            if edge_weight is not None:  # keep weights in sync
                 edge_weight = edge_weight[edge_mask]
             x = self.feat_mask(x)
 
@@ -130,13 +136,16 @@ class GCNGraphClassifier(torch.nn.Module):
         x1 = self.dropout(x1)
 
         h2 = self.norm2(self.conv2(x1, edge_index, edge_weight))
-        x2 = F.relu(h2 + x1);  x2 = self.dropout(x2)
+        x2 = F.relu(h2 + x1)
+        x2 = self.dropout(x2)
 
         h3 = self.norm3(self.conv3(x2, edge_index, edge_weight))
-        x3 = F.relu(h3 + x2);  x3 = self.dropout(x3)
+        x3 = F.relu(h3 + x2)
+        x3 = self.dropout(x3)
 
         h4 = self.norm4(self.conv4(x3, edge_index, edge_weight))
-        x4 = F.relu(h4 + x3);  x4 = self.dropout(x4)
+        x4 = F.relu(h4 + x3)
+        x4 = self.dropout(x4)
 
         # --- 3. graph-level pooling & head ----------------------------------
         pooled = global_add_pool(x4, batch)
@@ -147,7 +156,9 @@ class GCNGraphClassifier(torch.nn.Module):
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-class_weights = torch.tensor([1.0, 1.6, 1.4], device=device) # higher weight for 5g conspiracy
+class_weights = torch.tensor(
+    [1.0, 1.6, 1.4], device=device
+)  # higher weight for 5g conspiracy
 loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
 optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR, weight_decay=5e-4)
 
@@ -200,7 +211,7 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
             ps.append(out.argmax(1).cpu())
             ys.append(data.y.cpu())
 
-    loss = sum(losses) / len(loader.dataset)          # averaged over all graphs
+    loss = sum(losses) / len(loader.dataset)  # averaged over all graphs
     y_true = torch.cat(ys)
     y_pred = torch.cat(ps)
     acc = (y_true == y_pred).float().mean().item()
@@ -244,15 +255,15 @@ scale = (hidden_dim / BASE_HIDDEN) ** 0.5
 max_lr = BASE_MAX_LR * scale
 steps_per_epoch = len(train_loader)
 
-LR_CYCLE_EPOCHS = 150            #  ↓  only first 150 epochs
+LR_CYCLE_EPOCHS = 150  #  ↓  only first 150 epochs
 
 scheduler = OneCycleLR(
     optimizer,
     max_lr=max_lr,
     epochs=NUM_EPOCHS,
     steps_per_epoch=steps_per_epoch,
-    pct_start=0.3,       # 30% of cycle ramp‐up, 70% anneal
-    anneal_strategy="cos"  # cosine down‐ramp
+    pct_start=0.3,  # 30% of cycle ramp‐up, 70% anneal
+    anneal_strategy="cos",  # cosine down‐ramp
 )
 
 test_acc_history = []
