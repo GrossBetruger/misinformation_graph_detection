@@ -2,7 +2,6 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, SAGEConv
 from torch_geometric.utils import from_networkx
 from misinformation_graph_detection.graph_classifier import load_graphs
 import kagglehub
@@ -14,7 +13,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.nn import GCNConv, global_mean_pool, GATConv
+from torch_geometric.nn import GCNConv, GATConv
 import random
 
 from sklearn.preprocessing import StandardScaler
@@ -32,6 +31,10 @@ BASE_MAX_LR = 1e-4
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
 
+# conspiracy_graphs = conspiracy_graphs[:10]
+# fiveg_conspiracy_graphs = fiveg_conspiracy_graphs[:10]
+# non_conspiracy_graphs = non_conspiracy_graphs[:10]
+
 conspiracy_average_ds_size = (
     len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
 ) // 2
@@ -41,24 +44,30 @@ non_conspiracy_graphs = random.sample(non_conspiracy_graphs, conspiracy_average_
 # ----------- Create synthetic graph dataset -----------
 def create_graph(G: nx.Graph, label: int) -> Data:
     # collect raw features
-    x = [[G.nodes[n][k] for k in ("time", "friends", "followers")] for n in G.nodes()]
+    nodes = list(G.nodes().items())
+    # x = [[G.nodes[n][k] for k in ("time", "friends", "followers")] for n in G.nodes()]
+    x = [list(i[1].values()) for i in nodes]
     vals = torch.tensor(x, dtype=torch.float)  # shape [N,3]
-    # per‑graph normalization to zero‑mean/unit‑std
-    # vals = (vals - vals.mean(0)) / (vals.std(0) + 1e-6)
+    node_ids = [i[0] for i in nodes]
     data = from_networkx(G)
     data.x = vals
-    # add degree as a feature
-    deg = degree(data.edge_index[0], data.num_nodes).unsqueeze(1)
-    # node_betweenness = torch.tensor(nx.betweenness_centrality(G, normalized=True).values(), dtype=torch.float).unsqueeze(1)
-    data.x = torch.cat([data.x, deg], dim=1)  
-    # add times as a edge weight
+    # add betweenness centrality as a node feature
+    betweenness = [nx.betweenness_centrality(G, normalized=True)[i] for i in node_ids]
+    betweenness = torch.tensor(betweenness, dtype=torch.float).unsqueeze(1)
+    node_ids = torch.tensor(node_ids, dtype=torch.long)
 
+    # add degree as a node feature
+    deg = degree(data.edge_index[0], data.num_nodes).unsqueeze(1)
+    # concat data with calculated node features
+    data.x = torch.cat([data.x, deg, betweenness], dim=1)  
+    # add times as a edge weight
     times = torch.tensor([G.nodes[n]["time"] for n in G.nodes()], dtype=torch.float)
     # 1b) compute edge_index as usual, then per‐edge |Δt|
     src, dst = data.edge_index
     edge_weight = torch.abs(times[src] - times[dst])  # [E]
     data.edge_weight = edge_weight
-
+  
+    # per‑graph normalization to zero‑mean/unit‑std
     scaler = StandardScaler()
     data.x = torch.tensor(scaler.fit_transform(data.x), dtype=torch.float)
 
@@ -106,7 +115,7 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 # ----------- Define GNN Model for graph classification -----------
 BASE_HIDDEN = 32  # 32
 
-NUM_FEATURES = 4
+NUM_FEATURES = 5
 
 
 class GCNGraphClassifier(torch.nn.Module):
