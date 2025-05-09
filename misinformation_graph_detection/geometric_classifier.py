@@ -1,4 +1,5 @@
 import time
+from typing import Counter, Hashable
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -22,6 +23,7 @@ from sklearn.metrics import f1_score, classification_report
 import plotly.express as px
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+from networkx.algorithms.community import greedy_modularity_communities, louvain_communities
 
 
 path = kagglehub.dataset_download("arashnic/misinfo-graph")
@@ -31,9 +33,9 @@ BASE_MAX_LR = 1e-4
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
 
-# conspiracy_graphs = conspiracy_graphs[:10]
-# fiveg_conspiracy_graphs = fiveg_conspiracy_graphs[:10]
-# non_conspiracy_graphs = non_conspiracy_graphs[:10]
+# conspiracy_graphs = conspiracy_graphs[:50]
+# fiveg_conspiracy_graphs = fiveg_conspiracy_graphs[:50]
+# non_conspiracy_graphs = non_conspiracy_graphs[:50]
 
 conspiracy_average_ds_size = (
     len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
@@ -45,6 +47,8 @@ non_conspiracy_graphs = random.sample(non_conspiracy_graphs, conspiracy_average_
 def create_graph(G: nx.Graph, label: int) -> Data:
     # collect raw features
     nodes = list(G.nodes().items())
+    num_nodes = G.number_of_nodes()
+    assert num_nodes == len(nodes)
     # x = [[G.nodes[n][k] for k in ("time", "friends", "followers")] for n in G.nodes()]
     x = [list(i[1].values()) for i in nodes]
     vals = torch.tensor(x, dtype=torch.float)  # shape [N,3]
@@ -54,12 +58,32 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     # add betweenness centrality as a node feature
     betweenness = [nx.betweenness_centrality(G, normalized=True)[i] for i in node_ids]
     betweenness = torch.tensor(betweenness, dtype=torch.float).unsqueeze(1)
-    node_ids = torch.tensor(node_ids, dtype=torch.long)
+
+    # add modularity as constant node feature
+    greedy_communities = list(greedy_modularity_communities(G))
+    if G.number_of_edges() == 0:
+        mod_value = torch.zeros(num_nodes).unsqueeze(1)
+    else:
+        mod_value = nx.algorithms.community.modularity(G, greedy_communities)
+        mod_value = (torch.ones(num_nodes) * mod_value).unsqueeze(1)
+
+    # communities: 
+
+    communities: list[list[Hashable]] = louvain_communities(
+        G, seed=0
+    )
+    comm_map: dict = {}
+    community_sizes: dict = {}
+    for idx, community in enumerate(communities):
+        for node in community:
+            comm_map[node] = idx
+            community_sizes[idx] = len(community)
+    node_community_sizes = torch.tensor([community_sizes[comm_map[node]] for node in node_ids], dtype=torch.float).unsqueeze(1)
 
     # add degree as a node feature
     deg = degree(data.edge_index[0], data.num_nodes).unsqueeze(1)
     # concat data with calculated node features
-    data.x = torch.cat([data.x, deg, betweenness], dim=1)  
+    data.x = torch.cat([data.x, deg, betweenness, mod_value, node_community_sizes], dim=1)  
     # add times as a edge weight
     times = torch.tensor([G.nodes[n]["time"] for n in G.nodes()], dtype=torch.float)
     # 1b) compute edge_index as usual, then per‐edge |Δt|
@@ -115,7 +139,7 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 # ----------- Define GNN Model for graph classification -----------
 BASE_HIDDEN = 32  # 32
 
-NUM_FEATURES = 5
+NUM_FEATURES = 7
 
 
 class GCNGraphClassifier(torch.nn.Module):
@@ -264,7 +288,7 @@ def load_model(model: torch.nn.Module, model_path: str):
     return model
 
 
-NUM_EPOCHS = 220
+NUM_EPOCHS = 520
 # 5) Hook up OneCycleLR with the scaled max_lr
 hidden_dim = model.conv1.out_channels
 # 3) Compute a scaling factor ∝ sqrt(curr / base)
