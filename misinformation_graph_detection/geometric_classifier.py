@@ -35,13 +35,21 @@ conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(
 
 # conspiracy_graphs = conspiracy_graphs[:5]
 # fiveg_conspiracy_graphs = fiveg_conspiracy_graphs[:5]
-# non_conspiracy_graphs = non_conspiracy_graphs[:5]
+# non_conspiracy_graphs = non_conspiracy_graphs[:10]
 
 conspiracy_average_ds_size = (
     len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
 )
 
 non_conspiracy_graphs = random.sample(non_conspiracy_graphs, conspiracy_average_ds_size)
+
+def wiener_lcc(G: nx.Graph) -> float:
+    if nx.is_connected(G):
+        return nx.wiener_index(G)
+    # pick the biggest piece
+    comp = max(nx.connected_components(G), key=len)
+    return nx.wiener_index(G.subgraph(comp))
+
 
 # ----------- Create synthetic graph dataset -----------
 def create_graph(G: nx.Graph, label: int) -> Data:
@@ -74,16 +82,29 @@ def create_graph(G: nx.Graph, label: int) -> Data:
     )
     comm_map: dict = {}
     community_sizes: dict = {}
+    community_densities: dict = {}
+    community_wieners: dict = {}
     for idx, community in enumerate(communities):
         for node in community:
             comm_map[node] = idx
             community_sizes[idx] = len(community)
-    node_community_sizes = torch.tensor([community_sizes[comm_map[node]] for node in node_ids], dtype=torch.float).unsqueeze(1)
+            community_subgraph = G.subgraph(community)
+            community_density = nx.density(community_subgraph) if nx.is_connected(community_subgraph) else 0
+            # check not inf or nan 
+            assert not np.isinf(community_density), f"community_density is inf for subgraph {community_subgraph}"
+            assert not np.isnan(community_density), f"community_density is nan for subgraph {community_subgraph}"
+            community_densities[idx] = community_density
+            community_wieners[idx] = wiener_lcc(community_subgraph)
+            assert not np.isinf(community_wieners[idx]), f"community_wieners is inf for subgraph {community_subgraph}"
+            assert not np.isnan(community_wieners[idx]), f"community_wieners is nan for subgraph {community_subgraph}"
 
+    node_community_sizes = torch.tensor([community_sizes[comm_map[node]] for node in node_ids], dtype=torch.float).unsqueeze(1)
+    node_community_densities = torch.tensor([community_densities[comm_map[node]] for node in node_ids], dtype=torch.float).unsqueeze(1)
+    node_community_wieners = torch.tensor([community_wieners[comm_map[node]] for node in node_ids], dtype=torch.float).unsqueeze(1)
     # add degree as a node feature
     deg = degree(data.edge_index[0], data.num_nodes).unsqueeze(1)
     # concat data with calculated node features
-    data.x = torch.cat([data.x, deg, betweenness, mod_value, node_community_sizes], dim=1)  
+    data.x = torch.cat([data.x, deg, betweenness, mod_value, node_community_sizes, node_community_densities, node_community_wieners], dim=1)  
     # add times as a edge weight
     times = torch.tensor([G.nodes[n]["time"] for n in G.nodes()], dtype=torch.float)
     # 1b) compute edge_index as usual, then per‐edge |Δt|
@@ -139,7 +160,7 @@ test_loader = DataLoader(test_dataset, batch_size=16)
 # ----------- Define GNN Model for graph classification -----------
 BASE_HIDDEN = 32  # 32
 
-NUM_FEATURES = 7
+NUM_FEATURES = 9
 
 
 class GCNGraphClassifier(torch.nn.Module):
@@ -288,7 +309,7 @@ def load_model(model: torch.nn.Module, model_path: str):
     return model
 
 
-NUM_EPOCHS = 120
+NUM_EPOCHS = 150
 # 5) Hook up OneCycleLR with the scaled max_lr
 hidden_dim = model.conv1.out_channels
 # 3) Compute a scaling factor ∝ sqrt(curr / base)
@@ -304,7 +325,7 @@ scheduler = OneCycleLR(
     epochs=NUM_EPOCHS,
     steps_per_epoch=steps_per_epoch,
     pct_start=0.3,  # 30% of cycle ramp‐up, 70% anneal
-    anneal_strategy="cos",  # cosine down‐ramp
+    anneal_strategy="linear", 
 )
 
 test_acc_history = []
@@ -349,6 +370,7 @@ for epoch in range(1, NUM_EPOCHS + 1):
         f"F1_per_class={[f'{x:.3f}' for x in f1_pc]}"
     )
 
+
 # plot test accuracy and f1 macro
 fig = px.line(loss_history, title="Loss")
 fig.show()
@@ -360,10 +382,24 @@ fig = px.line(f1_mac_history, title="F1 Macro")
 fig.show()
 
 
-# load model
-# model = GCNGraphClassifier().to(device)
-# model.load_state_dict(torch.load(model_path))
+# ---- wrapper for explainer ----
+def model_forward(x, edge_index, edge_weight, batch):
+    return model(x, edge_index, batch, edge_weight)   # logits
 
-# # test model
-# test_acc = test(test_loader)
-# print(f"Test accuracy: {test_acc:.2%}")
+
+from torch_geometric.explain import GNNExplainer
+import pandas as pd
+import torch
+
+# human-readable names for the 9 columns in data.x
+FEATURE_NAMES = [
+    "time", 
+    "friends",
+    "followers",
+    "degree",
+    "betweenness",
+    "modularity",
+    "comm_size",
+    "comm_density",
+    "comm_wiener"
+]
