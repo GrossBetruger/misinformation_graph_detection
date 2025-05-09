@@ -33,13 +33,13 @@ BASE_MAX_LR = 1e-4
 
 conspiracy_graphs, fiveg_conspiracy_graphs, non_conspiracy_graphs = load_graphs(PATH)
 
-# conspiracy_graphs = conspiracy_graphs[:50]
-# fiveg_conspiracy_graphs = fiveg_conspiracy_graphs[:50]
-# non_conspiracy_graphs = non_conspiracy_graphs[:50]
+# conspiracy_graphs = conspiracy_graphs[:5]
+# fiveg_conspiracy_graphs = fiveg_conspiracy_graphs[:5]
+# non_conspiracy_graphs = non_conspiracy_graphs[:5]
 
 conspiracy_average_ds_size = (
     len(conspiracy_graphs) + len(fiveg_conspiracy_graphs)
-) // 2
+)
 
 non_conspiracy_graphs = random.sample(non_conspiracy_graphs, conspiracy_average_ds_size)
 
@@ -118,9 +118,9 @@ print(f"Mean non conspiracy graph size: {mean_non_conspiracy_graph_size}")
 print("parsing conspiracy graphs...")
 conspiracy_graphs = [create_graph(G, 0) for G in tqdm(conspiracy_graphs)]
 print("parsing fiveg conspiracy graphs...")
-fiveg_conspiracy_graphs = [create_graph(G, 1) for G in tqdm(fiveg_conspiracy_graphs)]
+fiveg_conspiracy_graphs = [create_graph(G, 0) for G in tqdm(fiveg_conspiracy_graphs)]
 print("parsing non conspiracy graphs...")
-non_conspiracy_graphs = [create_graph(G, 2) for G in tqdm(non_conspiracy_graphs)]
+non_conspiracy_graphs = [create_graph(G, 1) for G in tqdm(non_conspiracy_graphs)]
 
 dataset = (
     conspiracy_graphs
@@ -156,7 +156,7 @@ class GCNGraphClassifier(torch.nn.Module):
         self.norm3 = GraphNorm(BASE_HIDDEN)
         self.conv4 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm4 = GraphNorm(BASE_HIDDEN)
-        self.lin = Linear(BASE_HIDDEN, 3)
+        self.lin = Linear(BASE_HIDDEN, 2)
         self.dropout = Dropout(0.2)
 
     # now accept edge_weight
@@ -196,11 +196,11 @@ class GCNGraphClassifier(torch.nn.Module):
 # ----------- Training loop -----------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = GCNGraphClassifier().to(device)
-class_weights = torch.tensor(
-    [1.0, 1.0, 1.0],  # [1.0, 1.6, 1.4],
-    device=device
-)  # higher weight for 5g conspiracy
-loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+# class_weights = torch.tensor(
+#     [1.0, 1.0, 1.0],  # [1.0, 1.6, 1.4],
+#     device=device
+# )  # higher weight for 5g conspiracy
+loss_fn = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=BASE_MAX_LR)
 
 
@@ -263,8 +263,8 @@ def evaluate(loader: DataLoader) -> tuple[float, np.ndarray, float, str]:
     report = classification_report(
         y_true,
         y_pred,
-        labels=[0, 1, 2],
-        target_names=["conspiracy", "fiveg_conspiracy", "non_conspiracy"],
+        labels=[0, 1],
+        target_names=["conspiracy", "non_conspiracy"],
         zero_division=0,
     )
     return acc, f1_per_class, f1_macro, report, loss
@@ -288,7 +288,7 @@ def load_model(model: torch.nn.Module, model_path: str):
     return model
 
 
-NUM_EPOCHS = 520
+NUM_EPOCHS = 120
 # 5) Hook up OneCycleLR with the scaled max_lr
 hidden_dim = model.conv1.out_channels
 # 3) Compute a scaling factor ∝ sqrt(curr / base)
@@ -296,7 +296,7 @@ scale = (hidden_dim / BASE_HIDDEN) ** 0.5
 max_lr = BASE_MAX_LR * scale
 steps_per_epoch = len(train_loader)
 
-LR_CYCLE_EPOCHS = 150  #  ↓  only first 150 epochs
+# LR_CYCLE_EPOCHS = 150  #  ↓  only first 150 epochs
 
 scheduler = OneCycleLR(
     optimizer,
@@ -317,7 +317,7 @@ patience = 40
 epochs_since_best = 0
 
 for epoch in range(1, NUM_EPOCHS + 1):
-    if epoch > 100:
+    if True:  #epoch > 100:
         model.feat_mask_p = 0.0
         model.edge_dropout_p = 0.0
     train_loss, train_acc = train(scheduler)

@@ -176,15 +176,27 @@ if __name__ == "__main__":
     print()
     print("Model performance:")
     # replace labels with class names
-    performance_str = sklearn.metrics.classification_report(
+    performance_report = sklearn.metrics.classification_report(
         y_test,
         y_pred,
         target_names=[
             "conspiracy",
             "non-conspiracy",
         ],  # ["conspiracy", "5g conspiracy", "non-conspiracy"]
+        output_dict=True
     )
-    print(performance_str)
+    macro_f1 = performance_report['macro avg']['f1-score']
+    conspiracy_precision = performance_report['conspiracy']['precision']
+    conspiracy_recall = performance_report['conspiracy']['recall']
+    conspiracy_f1 = performance_report['conspiracy']['f1-score']
+    non_conspiracy_precision = performance_report['non-conspiracy']['precision']
+    non_conspiracy_recall = performance_report['non-conspiracy']['recall']
+    non_conspiracy_f1 = performance_report['non-conspiracy']['f1-score']
+    print()
+    print(f"Macro-avg F1-score: {macro_f1:.4f}")
+    print(f"Conspiracy precision: {conspiracy_precision:.4f}, recall: {conspiracy_recall:.4f}, F1-score: {conspiracy_f1:.4f}")
+    print(f"Non-conspiracy precision: {non_conspiracy_precision:.4f}, recall: {non_conspiracy_recall:.4f}, F1-score: {non_conspiracy_f1:.4f}") 
+    print()
 
     # Feature importance
     importances = model.feature_importances_
