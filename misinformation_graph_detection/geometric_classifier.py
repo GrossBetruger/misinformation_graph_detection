@@ -158,13 +158,13 @@ train_loader = DataLoader(train_dataset, batch_size=16)
 test_loader = DataLoader(test_dataset, batch_size=16)
 
 # ----------- Define GNN Model for graph classification -----------
-BASE_HIDDEN = 32  # 32
+BASE_HIDDEN = 16  # 32
 
 NUM_FEATURES = 9
 
 
 class GCNGraphClassifier(torch.nn.Module):
-    def __init__(self, feat_mask_p=0.1, edge_dropout_p=0.1):
+    def __init__(self, feat_mask_p=0.05, edge_dropout_p=0.05):
         super().__init__()
         self.feat_mask_p = feat_mask_p
         self.edge_dropout_p = edge_dropout_p
@@ -175,12 +175,10 @@ class GCNGraphClassifier(torch.nn.Module):
         self.norm2 = GraphNorm(BASE_HIDDEN)
         self.conv3 = GATConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm3 = GraphNorm(BASE_HIDDEN)
-        self.conv4 = GCNConv(BASE_HIDDEN, BASE_HIDDEN)
+        self.conv4 = GATConv(BASE_HIDDEN, BASE_HIDDEN)
         self.norm4 = GraphNorm(BASE_HIDDEN)
         self.lin = Linear(BASE_HIDDEN, 2)
         self.dropout = Dropout(0.2)
-
-    # now accept edge_weight
 
     def forward(self, x, edge_index, batch, edge_weight):
         # --- 1. training-time edge dropout ----------------------------------
@@ -338,7 +336,7 @@ patience = 40
 epochs_since_best = 0
 
 for epoch in range(1, NUM_EPOCHS + 1):
-    if True:  #epoch > 100:
+    if epoch > 50:
         model.feat_mask_p = 0.0
         model.edge_dropout_p = 0.0
     train_loss, train_acc = train(scheduler)
